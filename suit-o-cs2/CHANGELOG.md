@@ -10,6 +10,8 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+## [0.19.4] - 2026-09-27
+
 ### Fixed
 
 - Update follows the newest main commit whose Suit-O tests passed. A release cut has no run until the release job starts one, so Update no longer stops on that untested commit. (`0782781`)
