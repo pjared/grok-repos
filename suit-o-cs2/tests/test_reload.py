@@ -9,6 +9,7 @@ from suit_o.app import SuitOApp
 from suit_o.config import DEFAULT_CONFIG_PATH, ConfigError, load_config
 from suit_o.local_config import local_config_path, migrate_user_settings, store_personal_settings
 from suit_o.models import EventType
+from suit_o.gsi.payloads import make_payload
 from suit_o.reload import (
     ChangeDebouncer,
     FileWatcher,
@@ -16,6 +17,7 @@ from suit_o.reload import (
     choose_reload,
     consume_restart_state,
     gui_restart_argv,
+    restart_is_blocked,
     write_restart_state,
 )
 from suit_o.speech.stub import StubSpeechBackend
@@ -23,6 +25,7 @@ from suit_o.update import (
     CommandResult,
     explain_git_failure,
     install_requirements,
+    interpret_check_runs,
     requirement_paths,
     run_git_update,
 )
@@ -272,6 +275,105 @@ def test_update_reports_local_changes_fast_forward_and_requirements(tmp_path: Pa
         repo=repo,
         project=project,
     ) == []
+
+
+def test_check_runs_ignore_other_workflows_and_wait_for_pytest():
+    assert interpret_check_runs({}) == "pending"
+    assert interpret_check_runs({"check_runs": []}) == "pending"
+    assert interpret_check_runs("nope") == "pending"
+    other = {"name": "lint", "status": "completed", "conclusion": "failure"}
+    assert interpret_check_runs({"check_runs": [other]}) == "pending"
+    pending = {"name": "pytest", "status": "in_progress", "conclusion": None}
+    assert interpret_check_runs({"check_runs": [pending]}) == "pending"
+    failed = {"name": "pytest", "status": "completed", "conclusion": "failure"}
+    assert interpret_check_runs({"check_runs": [failed, other]}) == "failure"
+    cancelled = {"name": "Suit-O tests / pytest", "status": "completed", "conclusion": "cancelled"}
+    assert interpret_check_runs({"check_runs": [cancelled]}) == "failure"
+    skipped = {"name": "pytest", "status": "completed", "conclusion": "skipped"}
+    passed = {"name": "suit-o", "status": "completed", "conclusion": "success"}
+    assert interpret_check_runs({"check_runs": [skipped, passed]}) == "success"
+    assert interpret_check_runs({"check_runs": [passed]}) == "success"
+
+
+def _remote_runner(heads: list[str], pulls: list[list[str]]):
+    sequence = iter(heads)
+
+    def runner(args, _cwd):
+        if args == ["git", "rev-parse", "HEAD"]:
+            return CommandResult(0, next(sequence), "")
+        if args == ["git", "fetch", "origin"]:
+            return CommandResult(0, "", "")
+        if args == ["git", "rev-parse", "origin/main"]:
+            return CommandResult(0, "bbb\n", "")
+        if args[:2] == ["git", "pull"]:
+            pulls.append(args)
+            return CommandResult(0, "Updating aaa..bbb\n", "")
+        if args[:2] == ["git", "diff"]:
+            return CommandResult(0, "", "")
+        return CommandResult(1, "", f"unexpected {' '.join(args)}")
+
+    return runner
+
+
+def test_update_refuses_a_commit_until_its_tests_pass(tmp_path: Path):
+    project = tmp_path / "suit-o-cs2"
+    project.mkdir()
+    (tmp_path / ".git").mkdir()
+    pulls: list[list[str]] = []
+
+    pending = run_git_update(
+        project,
+        _remote_runner(["aaa\n"], pulls),
+        check=lambda sha: "pending",
+    )
+    assert pending.ok is False
+    assert pending.changed is False
+    assert "bbb"[:7] in pending.message
+    assert "still running" in pending.message
+    assert pulls == []
+
+    failed = run_git_update(
+        project,
+        _remote_runner(["aaa\n"], pulls),
+        check=lambda sha: "failure",
+    )
+    assert failed.ok is False
+    assert "Tests failed" in failed.message
+    assert "bbb"[:7] in failed.message
+    assert pulls == []
+
+    seen: list[str] = []
+    updated = run_git_update(
+        project,
+        _remote_runner(["aaa\n", "aaa\n", "bbb\n"], pulls),
+        check=lambda sha: seen.append(sha) or "success",
+    )
+    assert updated.ok is True
+    assert updated.changed is True
+    assert pulls and pulls[-1][:2] == ["git", "pull"]
+    assert seen == ["bbb"]
+
+
+def test_restart_waits_for_the_menu_or_the_end_of_the_round(tmp_path: Path):
+    assert restart_is_blocked(None, None) is False
+    assert restart_is_blocked("menu", "live") is False
+    assert restart_is_blocked("playing", "live") is True
+    assert restart_is_blocked("playing", "freezetime") is False
+    assert restart_is_blocked("playing", "over") is False
+    assert restart_is_blocked("textinput", "live") is True
+
+    path = tmp_path / "config.yaml"
+    path.write_bytes(DEFAULT_CONFIG_PATH.read_bytes())
+    app = SuitOApp(load_config(DEFAULT_CONFIG_PATH), backend=StubSpeechBackend(), config_path=path)
+    assert app.restart_blocked() is False
+    app._handle(make_payload(activity="playing", round_phase="live"))
+    assert app.restart_blocked() is True
+    app._handle(make_payload(activity="playing", round_phase="freezetime"))
+    assert app.restart_blocked() is False
+    app._handle(make_payload(activity="textinput", round_phase="live"))
+    assert app.restart_blocked() is True
+    app._handle(make_payload(activity="menu", round_phase="live"))
+    assert app.restart_blocked() is False
 
 
 def test_store_refuses_a_microphone_without_writing_local(tmp_path: Path):

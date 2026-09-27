@@ -13,3 +13,5 @@ lineups/**/*.txt
 lineups/**/order.txt
 config.local.yaml
 .suit-o-restart.json
+lineup-data/**
+!lineup-data/.gitkeep

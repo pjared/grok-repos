@@ -9,9 +9,12 @@ from __future__ import annotations
 
 import logging
 import sys
+from pathlib import Path
+
 import tkinter as tk
 
 from suit_o.app import SuitOApp
+from suit_o.lineups.library import LineupCard
 from suit_o.lineups.place import Monitor, pick_monitor, place_overlay
 
 logger = logging.getLogger(__name__)
@@ -31,7 +34,9 @@ class LineupOverlay:
         self._monitors = monitors
         self._closed = False
         self._photo: tk.PhotoImage | None = None
+        self._aim_photo: tk.PhotoImage | None = None
         self._shown_path = ""
+        self._shown_aim = ""
         self._shown_width = 0
         self._job: str | None = None
 
@@ -43,8 +48,11 @@ class LineupOverlay:
             self.top.attributes("-alpha", float(app.config.lineups.opacity))
         except tk.TclError:
             logger.debug("This display cannot set window opacity", exc_info=True)
-        self.image = tk.Label(self.top, bg="#1b1b1b", bd=0)
-        self.image.pack()
+        self.photos = tk.Frame(self.top, bg="#1b1b1b")
+        self.photos.pack()
+        self.image = tk.Label(self.photos, bg="#1b1b1b", bd=0)
+        self.image.pack(side="left")
+        self.aim = tk.Label(self.photos, bg="#1b1b1b", bd=0)
         self.caption = tk.Label(
             self.top,
             bg="#1b1b1b",
@@ -89,14 +97,29 @@ class LineupOverlay:
             if self.top.winfo_viewable():
                 self.top.withdraw()
             self._shown_path = ""
+            self._shown_aim = ""
             self._shown_width = 0
             return
         card = view.card
         width = int(settings.width)
-        if self._shown_path != str(card.path) or self._shown_width != width:
-            self._photo = _fit_photo(str(card.path), width)
+        slots = overlay_images(card, width)
+        signature = tuple((str(path), slot_width) for path, slot_width in slots)
+        if (self._shown_path, self._shown_aim, self._shown_width) != (
+            signature[0][0] if signature else "",
+            signature[1][0] if len(signature) > 1 else "",
+            width,
+        ):
+            self._photo = _fit_photo(str(slots[0][0]), slots[0][1])
             self.image.configure(image=self._photo)
-            self._shown_path = str(card.path)
+            if len(slots) > 1:
+                self._aim_photo = _fit_photo(str(slots[1][0]), slots[1][1])
+                self.aim.configure(image=self._aim_photo)
+                self.aim.pack(side="left")
+            else:
+                self._aim_photo = None
+                self.aim.pack_forget()
+            self._shown_path = signature[0][0]
+            self._shown_aim = signature[1][0] if len(signature) > 1 else ""
             self._shown_width = width
         self.caption.configure(text=f"{card.caption}  ({view.index + 1}/{view.total})", wraplength=width)
         try:
@@ -140,6 +163,16 @@ def monitors_for(owner: tk.Misc) -> list[Monitor]:
             "Primary",
         )
     ]
+
+
+def overlay_images(card: LineupCard, width: int) -> list[tuple[Path, int]]:
+    """Stand photo, plus the aim photo beside it when the pack supplied one."""
+
+    total = max(1, int(width))
+    if card.aim_path is not None:
+        stand_width = max(1, total // 2)
+        return [(card.path, stand_width), (card.aim_path, max(1, total - stand_width))]
+    return [(card.path, total)]
 
 
 def _fit_photo(path: str, max_width: int) -> tk.PhotoImage:

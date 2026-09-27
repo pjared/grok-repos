@@ -63,6 +63,10 @@ class SuitOWindow:
         self._device_names: list[str] = []
         self._updating = False
         self._notice_job: str | None = None
+        self._pending_update = False
+        self._pending_restart = False
+        self._pending_notice = "Reloaded"
+        self._pending_noted = False
         config_path = app.config_path or (PROJECT_ROOT / "config.yaml")
         self._watcher = FileWatcher(
             PROJECT_ROOT,
@@ -341,6 +345,9 @@ class SuitOWindow:
         if self._closed:
             return
         try:
+            self._release_pending()
+            if self._closed:
+                return
             self._poll_watcher()
             if self._closed:
                 return
@@ -361,14 +368,24 @@ class SuitOWindow:
         if not kinds:
             return
         action = choose_reload(kinds)
+        if action == "restart" and self.app.restart_blocked():
+            if "content" in kinds:
+                self._apply_content_reload()
+            self._defer("restart", "Reloaded")
+            return
         if action == "restart":
             self._restart_in_place("Reloaded")
             return
         if action != "reload":
             return
+        self._apply_content_reload()
+
+    def _apply_content_reload(self) -> None:
+        """Apply config and content now. A listener-address change waits out a live round."""
+
         result = self.app.reload_content()
         if result.restart:
-            self._restart_in_place("Reloaded")
+            self._restart_or_defer("Reloaded")
             return
         if not result.applied:
             return
@@ -395,6 +412,55 @@ class SuitOWindow:
         self._show_notice(notice)
         self.app.note(notice)
 
+    def _restart_or_defer(self, notice: str) -> None:
+        if self.app.restart_blocked():
+            self._defer("restart", notice)
+            return
+        self._restart_in_place(notice)
+
+    def _defer(self, kind: str, notice: str = "Reloaded") -> None:
+        """Hold a process restart or Update until the live round ends.
+
+        An Update covers a code restart, so a waiting pull replaces a waiting
+        restart. A restart requested after the pull has already landed stays
+        queued beside it.
+        """
+
+        if kind == "update":
+            self._pending_update = True
+        else:
+            self._pending_restart = True
+            self._pending_notice = notice
+        self.notice.configure(text="Update pending")
+        if self._notice_job is not None:
+            self.root.after_cancel(self._notice_job)
+            self._notice_job = None
+        detail = (
+            "Update pending. Suit-O will reload when you leave the live round "
+            "or return to the menu."
+        )
+        self.update_status.configure(text=detail)
+        if not self._pending_noted:
+            self.app.note(detail)
+            self._pending_noted = True
+
+    def _release_pending(self) -> None:
+        if self._closed or self._updating:
+            return
+        if self.app.restart_blocked():
+            return
+        if not self._pending_update and not self._pending_restart:
+            return
+        if self._pending_update:
+            self._pending_update = False
+            self._pending_noted = self._pending_restart
+            self._update()
+            return
+        notice = self._pending_notice
+        self._pending_restart = False
+        self._pending_noted = False
+        self._restart_in_place(notice)
+
     def _show_notice(self, text: str) -> None:
         self.notice.configure(text=text)
         if self._notice_job is not None:
@@ -403,8 +469,12 @@ class SuitOWindow:
 
     def _clear_notice(self) -> None:
         self._notice_job = None
-        if not self._closed:
-            self.notice.configure(text="")
+        if self._closed:
+            return
+        if self._pending_update or self._pending_restart:
+            self.notice.configure(text="Update pending")
+            return
+        self.notice.configure(text="")
 
     def _save_update_pref(self) -> None:
         try:
@@ -414,6 +484,9 @@ class SuitOWindow:
 
     def _update(self) -> None:
         if self._updating or self._closed:
+            return
+        if self.app.restart_blocked():
+            self._defer("update")
             return
         self._updating = True
         self.update_button.state(["disabled"])
@@ -447,7 +520,7 @@ class SuitOWindow:
         self.update_status.configure(text=outcome.message)
         self.app.note(outcome.message)
         if outcome.ok and outcome.changed:
-            self._restart_in_place("Reloaded")
+            self._restart_or_defer("Reloaded")
 
     def _restart_in_place(self, notice: str) -> None:
         """Stop the listener, free its port, and replace this process."""

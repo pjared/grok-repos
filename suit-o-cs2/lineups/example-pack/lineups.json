@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "maps": ["mirage"],
+  "lineups": [
+    {
+      "id": "mirage-t-smoke-window-example",
+      "map": "mirage",
+      "side": "T",
+      "grenade": "smoke",
+      "name": "Window smoke",
+      "stand": "T ramp",
+      "aim": "Window",
+      "throw_type": "jumpthrow",
+      "throw": "Jump and throw",
+      "covers": "Window",
+      "stand_image": "images/window-stand.png",
+      "aim_image": "images/window-aim.png",
+      "setpos": "setpos 0 0 0; setang 0 0 0",
+      "status": "draft"
+    }
+  ]
+}

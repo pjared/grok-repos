@@ -174,6 +174,8 @@ Run CS2 in **borderless windowed** or **windowed** mode so a normal desktop wind
 
 The card hides when the smoke is not in your hand, when you are dead, or when the round is over. A hotkey can hide it even while you are holding a smoke, and show it again the next time the trigger matches. Two more hotkeys cycle to the next or previous lineup. The defaults are `ctrl+shift+right`, `ctrl+shift+left`, and `ctrl+shift+h`. Saving them writes `config.local.yaml`. They must not be the same chord as `ptt.cs2_voice_key` or the reserved `ptt.keybind`. On Windows they are registered with the system so they work while CS2 is focused. They only change this overlay. They are not forwarded to the game. On Windows the overlay is click-through, so mouse clicks land on the game underneath.
 
+A pack lineup shows the stand photo and the aim photo side by side. The caption is the stand spot, the aim spot, and the throw type (for example `T ramp → Window (jumpthrow)`). **Smokes only**, on by default, hides flash, molotov, and HE cards from that overlay. Folder screenshots are smokes. The overlay still appears only while a smoke is in your hand.
+
 No lineup images are shipped. Add your own PNGs:
 
 ```text
@@ -182,15 +184,19 @@ lineups/<map>/<t|ct>/<name>.txt    optional caption; otherwise the filename is t
 lineups/<map>/<t|ct>/order.txt     optional order, one filename per line
 ```
 
-Use the CS2 map id, such as `de_dust2` or `de_mirage`. A short folder name (`dust2`) is also accepted. `t` and `ct` are the two sides. Empty folders for the current premier maps are already there. The **Lineups** tab can import PNGs for a map and side, rename them, set a caption, reorder them, and preview them. It also saves the card width, opacity, corner, and monitor. Images you add stay on your machine; png and caption files under `lineups/` are gitignored.
+Use the CS2 map id, such as `de_dust2` or `de_mirage`. A short folder name (`dust2`) is also accepted. `t` and `ct` are the two sides. Empty folders for the current premier maps are already there. The **Lineups** tab can import PNGs for a map and side, rename them, set a caption, reorder them, and preview them. It also saves the card width, opacity, corner, monitor, and the smokes-only filter. Images you add stay on your machine; png and caption files under `lineups/` are gitignored.
+
+**Import pack** accepts a folder or a `.zip` in the version 1 format described by `lineups/pack.schema.json`. `lineups/example-pack/lineups.json` is an example with no photos. Each lineup has an id, map, side (`T` or `CT`), grenade (`smoke`, `flash`, `molotov`, or `he`), stand spot, aim spot, throw type, and paths to a stand photo and an aim photo. Suit-O checks the file, then copies it into `lineup-data/` (gitignored). Importing the same id again replaces that lineup and leaves the others. Those images belong to their creators and stay on your machine; do not commit them. A `setpos` string in the pack is practice-server text only. Suit-O never sends it to CS2.
 
 ## Updates without closing the window
 
-Leave the desktop window open. Suit-O watches `config.yaml`, `config.local.yaml`, `lines/`, `voices/`, and `lineups/`. A valid change applies immediately: volume, the output device, voice tuning, mute, stock lines, cloned-voice files, and lineup images. If a file is invalid, the previous settings stay in effect and the error is written in the event log.
+Leave the desktop window open. Suit-O watches `config.yaml`, `config.local.yaml`, `lines/`, `voices/`, and `lineups/`. A valid change applies immediately, including during a live round: volume, the output device, voice tuning, mute, stock lines, cloned-voice files, and lineup images. That reload does not stop the game-state listener. If a file is invalid, the previous settings stay in effect and the error is written in the event log.
 
-A change under `suit_o/` (for example after **Update** or a `git pull`) restarts the window in place. Several files saved together count as one restart. Suit-O stops the game-state listener and frees port 3000, then opens again on the same tab with the same window position. Mute is kept. A short **Reloaded** notice confirms it.
+A change under `suit_o/` (for example after **Update**) restarts the window in place. Several files saved together count as one restart. Suit-O stops the game-state listener and frees port 3000, then opens again on the same tab with the same window position. Mute is kept. A short **Reloaded** notice confirms it. A restart waits if you are in a live round and not in the menu. The window shows **Update pending** until the round ends or you return to the menu, then reloads. Freezetime, a finished round, warmup, and the menu do not wait.
 
-**Update** on the Listener tab runs `git pull --ff-only`. When `requirements.txt`, `requirements-dev.txt`, or `requirements-voice.txt` changed, it runs `python -m pip install -r` on those files, then restarts. If the pull is already current, nothing restarts. If local edits would be overwritten, or the histories have diverged, the status line says what to do and Suit-O keeps running. Personal settings in `config.local.yaml` do not block the pull.
+**Update** on the Listener tab fetches `origin/main` and reads that commit's check runs from the public GitHub API. It applies the commit only when the Suit-O pytest check succeeded. A failed check, or a check that is still running or missing, stops the update and the status line says why. Nothing is pulled in that case. When the check passed, **Update** runs `git pull --ff-only`. When `requirements.txt`, `requirements-dev.txt`, or `requirements-voice.txt` changed, it runs `python -m pip install -r` on those files, then restarts. If the pull is already current, nothing restarts. If local edits would be overwritten, or the histories have diverged, the status line says what to do and Suit-O keeps running. Personal settings in `config.local.yaml` do not block the pull. **Update** also waits out a live round, with the same **Update pending** notice, and does not pull until you are in the menu or the round is no longer live.
+
+Pushes to `main` run that pytest job on `windows-latest` (`.github/workflows/suit-o-tests.yml`).
 
 ## Remote speech later
 
@@ -215,6 +221,10 @@ A change under `suit_o/` (for example after **Update** or a `git pull`) restarts
 **Startup says the output device looks like a microphone or cable.** `speech.output_device` matched a mic, stereo mix, or virtual-cable name. Clear it in `config.local.yaml` (or in `config.yaml` if you have not launched since editing it), or set a headphone/speaker name. Suit-O will not play into a device that usually feeds voice chat.
 
 **Update says a file has local edits.** Those edits are in a tracked file, usually `config.yaml`. Suit-O settings belong in `config.local.yaml`. The first launch moves output device, volume, mute, voice tuning, and lineup settings there. Commit or stash anything else, then press **Update** again.
+
+**Update says tests failed or are still running.** Suit-O will not apply that commit. Wait until the Suit-O pytest check on GitHub is green, then press **Update** again.
+
+**The window says Update pending during a match.** A code reload or **Update** is waiting so the game-state listener stays up through the live round. It runs when you leave the round or return to the menu. Settings and lineup files can still change while you play.
 
 **The window says it kept the previous settings.** The file you just saved does not parse. Suit-O is still using the last good config and lines. The log line is the reason.
 

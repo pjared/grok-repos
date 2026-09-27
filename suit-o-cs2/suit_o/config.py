@@ -93,6 +93,7 @@ class LineupConfig:
     hotkey_next: str = "ctrl+shift+right"
     hotkey_previous: str = "ctrl+shift+left"
     hotkey_toggle: str = "ctrl+shift+h"
+    smokes_only: bool = True
 
 
 @dataclass
@@ -449,6 +450,9 @@ def _parse_lineups(raw: dict, *, voice_key: str, ptt_key: str) -> LineupConfig:
     monitor = _as_int(raw.get("monitor", 0), "lineups.monitor")
     if monitor < 0:
         raise ConfigError("lineups.monitor cannot be negative")
+    smokes_only = raw.get("smokes_only", True)
+    if not isinstance(smokes_only, bool):
+        raise ConfigError("lineups.smokes_only must be true or false")
     try:
         nxt = canonical_hotkey(str(raw.get("hotkey_next", "ctrl+shift+right") or ""))
         prev = canonical_hotkey(str(raw.get("hotkey_previous", "ctrl+shift+left") or ""))
@@ -465,6 +469,7 @@ def _parse_lineups(raw: dict, *, voice_key: str, ptt_key: str) -> LineupConfig:
         hotkey_next=nxt,
         hotkey_previous=prev,
         hotkey_toggle=toggle,
+        smokes_only=smokes_only,
     )
 
 

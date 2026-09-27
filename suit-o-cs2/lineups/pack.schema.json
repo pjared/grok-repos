@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/pjared/grok-repos/blob/main/suit-o-cs2/lineups/pack.schema.json",
+  "title": "Suit-O lineup pack",
+  "description": "A folder or zip of lineups.json plus images. Images are not part of this repository. version 1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "maps", "lineups"],
+  "properties": {
+    "version": { "const": 1 },
+    "maps": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "lineups": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/lineup" }
+    }
+  },
+  "$defs": {
+    "lineup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "map",
+        "side",
+        "grenade",
+        "name",
+        "stand",
+        "aim",
+        "throw_type",
+        "throw",
+        "covers",
+        "stand_image",
+        "aim_image",
+        "setpos",
+        "status"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "map": { "type": "string", "minLength": 1 },
+        "side": { "enum": ["T", "CT"] },
+        "grenade": { "enum": ["smoke", "flash", "molotov", "he"] },
+        "name": { "type": "string" },
+        "stand": { "type": "string" },
+        "aim": { "type": "string" },
+        "throw_type": { "type": "string" },
+        "throw": { "type": "string" },
+        "covers": { "type": "string" },
+        "stand_image": { "type": "string", "minLength": 1 },
+        "aim_image": { "type": "string", "minLength": 1 },
+        "setpos": {
+          "type": "string",
+          "description": "Practice-server console text. Suit-O may copy it. It is never sent to CS2."
+        },
+        "status": { "enum": ["draft", "verified"] }
+      }
+    }
+  }
+}

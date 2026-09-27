@@ -23,10 +23,17 @@ class LibraryError(ValueError):
 
 @dataclass(frozen=True)
 class LineupCard:
-    """One image the overlay can show."""
+    """One lineup the overlay can show.
+
+    Folder images have only ``path``. A pack lineup also has an aim photo.
+    ``grenade`` is ``smoke`` for folder images, which are smoke lineups.
+    """
 
     path: Path
     caption: str
+    aim_path: Path | None = None
+    grenade: str = "smoke"
+    lineup_id: str = ""
 
     @property
     def filename(self) -> str:

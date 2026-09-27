@@ -21,6 +21,7 @@ from suit_o.gsi.parse import parse_payload
 from suit_o.gsi.server import GsiServer
 from suit_o.lines.provider import LineProvider, YamlLineProvider
 from suit_o.local_config import store_personal_settings
+from suit_o.reload import restart_is_blocked
 from suit_o.models import GameEvent, Utterance
 from suit_o.lineups.deck import DeckView, LineupDeck
 from suit_o.preferences import clamp_volume
@@ -108,6 +109,7 @@ class SuitOApp:
         voices: Callable[[], list[str]] | None = None,
         voices_dir: Path | None = None,
         lineups_dir: Path | None = None,
+        pack_dir: Path | None = None,
         backend_factory: Callable[[SpeechConfig], SpeechBackend] | None = None,
     ) -> None:
         self.config = config
@@ -116,8 +118,12 @@ class SuitOApp:
         self._voices = voices
         self.voices_dir = voices_dir or (PROJECT_ROOT / "voices")
         self.lineups_dir = lineups_dir or (PROJECT_ROOT / "lineups")
-        self.lineups = LineupDeck(self.lineups_dir)
+        self.pack_dir = pack_dir or (PROJECT_ROOT / "lineup-data")
+        self.lineups = LineupDeck(self.lineups_dir, pack_dir=self.pack_dir)
         self.lineups.set_enabled(config.lineups.enabled)
+        self.lineups.set_smokes_only(config.lineups.smokes_only)
+        self._match_activity: str | None = None
+        self._match_round: str | None = None
         self._backend_factory = backend_factory or create_backend
         if not config.speech.voices_dir:
             config.speech.voices_dir = str(self.voices_dir)
@@ -553,6 +559,18 @@ class SuitOApp:
         )
         return line
 
+    def restart_blocked(self) -> bool:
+        """A live round must finish before Suit-O restarts or pulls an update."""
+
+        return restart_is_blocked(self._match_activity, self._match_round)
+
+    def _note_match(self, snapshot) -> None:
+        own = snapshot.own
+        if own is not None and own.activity:
+            self._match_activity = own.activity
+        if snapshot.round_present and snapshot.round_phase:
+            self._match_round = snapshot.round_phase
+
     def lineup_view(self) -> DeckView:
         """Current overlay card. Safe to call from the window thread."""
 
@@ -592,6 +610,7 @@ class SuitOApp:
         hotkey_next: str,
         hotkey_previous: str,
         hotkey_toggle: str,
+        smokes_only: bool = True,
     ) -> None:
         """Store overlay size, corner, and hotkeys. Does not touch speech settings."""
 
@@ -615,6 +634,7 @@ class SuitOApp:
             hotkey_next=next_key,
             hotkey_previous=previous_key,
             hotkey_toggle=toggle_key,
+            smokes_only=bool(smokes_only),
             voice_key=self.config.ptt.cs2_voice_key,
             ptt_key=self.config.ptt.keybind,
         )
@@ -628,7 +648,9 @@ class SuitOApp:
         settings.hotkey_next = next_key
         settings.hotkey_previous = previous_key
         settings.hotkey_toggle = toggle_key
+        settings.smokes_only = bool(smokes_only)
         self.lineups.set_enabled(enabled)
+        self.lineups.set_smokes_only(bool(smokes_only))
 
     def save_preferences(self) -> None:
         """Write volume, mute, output device, and voice tuning to config.local.yaml.
@@ -719,6 +741,7 @@ class SuitOApp:
             self.speech.set_output_device(loaded.speech.output_device)
             self.speech.apply_tuning(self.current_tuning())
             self.lineups.set_enabled(loaded.lineups.enabled)
+            self.lineups.set_smokes_only(loaded.lineups.smokes_only)
             tuning_changed = self.current_tuning() != previous_tuning
             backend_changed = (
                 loaded.speech.backend != previous_backend or loaded.speech.voice != previous_voice
@@ -833,6 +856,7 @@ class SuitOApp:
         if snapshot is None:
             return
         self.lineups.observe(snapshot)
+        self._note_match(snapshot)
         detected = self.detector.update(snapshot)
         now = float(self._clock())
         events = [

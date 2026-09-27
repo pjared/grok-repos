@@ -40,6 +40,7 @@ LINEUP_DEFAULTS = {
     "hotkey_next": "ctrl+shift+right",
     "hotkey_previous": "ctrl+shift+left",
     "hotkey_toggle": "ctrl+shift+h",
+    "smokes_only": True,
 }
 UPDATE_DEFAULTS = {"check_on_launch": False}
 _SECTION_DEFAULTS = {
@@ -107,6 +108,7 @@ def store_personal_settings(
     hotkey_next: str | None = None,
     hotkey_previous: str | None = None,
     hotkey_toggle: str | None = None,
+    smokes_only: bool | None = None,
     check_on_launch: bool | None = None,
     voice_key: str = "",
     ptt_key: str = "",
@@ -138,6 +140,7 @@ def store_personal_settings(
         "hotkey_next": hotkey_next,
         "hotkey_previous": hotkey_previous,
         "hotkey_toggle": hotkey_toggle,
+        "smokes_only": smokes_only,
     }
     if any(value is not None for value in user_args.values()):
         _validate_user(config_path, user_args)
@@ -366,7 +369,7 @@ def _same(key: str, current: object, default: object) -> bool:
 
 
 def _coerce(key: str, value: object) -> object:
-    if key in {"mute", "enabled", "check_on_launch"}:
+    if key in {"mute", "enabled", "check_on_launch", "smokes_only"}:
         if isinstance(value, bool):
             return value
         raise ConfigError(f"{key} must be true or false")

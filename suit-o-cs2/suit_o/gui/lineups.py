@@ -23,6 +23,7 @@ from suit_o.lineups.library import (
     rename_card,
     set_caption,
 )
+from suit_o.lineups.pack import PackError, import_pack as copy_lineup_pack, pack_cards
 from suit_o.lineups.place import CORNERS
 
 PREMIER_MAPS = (
@@ -50,7 +51,9 @@ class LineupsPanel:
         ttk.Label(
             parent,
             text=(
-                "Put your own smoke screenshots in lineups/<map>/<t|ct>/. "
+                "Put your own smoke screenshots in lineups/<map>/<t|ct>/, "
+                "or import a lineup pack (a folder or zip with lineups.json). "
+                "Pack photos stay in lineup-data/ on this machine. "
                 "The overlay is a separate click-through window. It never reads game memory "
                 "and its hotkeys are not sent to CS2. Use borderless or windowed mode."
             ),
@@ -84,11 +87,12 @@ class LineupsPanel:
         buttons = ttk.Frame(parent)
         buttons.grid(row=3, column=0, sticky="w", pady=(6, 4))
         ttk.Button(buttons, text="Import", command=self.import_files).grid(row=0, column=0)
-        ttk.Button(buttons, text="Rename", command=self.rename).grid(row=0, column=1, padx=(6, 0))
-        ttk.Button(buttons, text="Caption", command=self.caption).grid(row=0, column=2, padx=(6, 0))
-        ttk.Button(buttons, text="Up", command=lambda: self.move(-1)).grid(row=0, column=3, padx=(12, 0))
-        ttk.Button(buttons, text="Down", command=lambda: self.move(1)).grid(row=0, column=4, padx=(6, 0))
-        ttk.Button(buttons, text="Remove", command=self.remove).grid(row=0, column=5, padx=(6, 0))
+        ttk.Button(buttons, text="Import pack", command=self.import_pack).grid(row=0, column=1, padx=(6, 0))
+        ttk.Button(buttons, text="Rename", command=self.rename).grid(row=0, column=2, padx=(6, 0))
+        ttk.Button(buttons, text="Caption", command=self.caption).grid(row=0, column=3, padx=(6, 0))
+        ttk.Button(buttons, text="Up", command=lambda: self.move(-1)).grid(row=0, column=4, padx=(12, 0))
+        ttk.Button(buttons, text="Down", command=lambda: self.move(1)).grid(row=0, column=5, padx=(6, 0))
+        ttk.Button(buttons, text="Remove", command=self.remove).grid(row=0, column=6, padx=(6, 0))
 
         settings = self.app.config.lineups
         form = ttk.Frame(parent)
@@ -97,6 +101,10 @@ class LineupsPanel:
         self.enabled = tk.BooleanVar(value=settings.enabled)
         ttk.Checkbutton(form, text="Overlay enabled", variable=self.enabled).grid(
             row=0, column=0, columnspan=2, sticky="w"
+        )
+        self.smokes_only = tk.BooleanVar(value=settings.smokes_only)
+        ttk.Checkbutton(form, text="Smokes only", variable=self.smokes_only).grid(
+            row=0, column=2, sticky="w"
         )
         ttk.Label(form, text="Width").grid(row=1, column=0, sticky="w")
         self.width = tk.DoubleVar(value=settings.width)
@@ -150,6 +158,7 @@ class LineupsPanel:
 
         settings = self.app.config.lineups
         self.enabled.set(settings.enabled)
+        self.smokes_only.set(settings.smokes_only)
         self.width.set(settings.width)
         self.opacity.set(round(settings.opacity * 100))
         if settings.corner in CORNERS:
@@ -182,10 +191,15 @@ class LineupsPanel:
         self.reload()
 
     def reload(self) -> None:
-        self._cards = list_cards(self.app.lineups_dir, self.map_name.get(), self.side.get() or "CT")
+        side = self.side.get() or "CT"
+        self._cards = list_cards(self.app.lineups_dir, self.map_name.get(), side)
+        self._cards.extend(
+            pack_cards(self.app.pack_dir, self.map_name.get(), side, smokes_only=False)
+        )
         self.cards.delete(0, "end")
         for card in self._cards:
-            self.cards.insert("end", card.caption)
+            label = card.caption if not card.lineup_id else f"{card.caption}  · pack"
+            self.cards.insert("end", label)
         if self._cards:
             self.cards.selection_set(0)
             self._show_selected()
@@ -223,9 +237,48 @@ class LineupsPanel:
         self.reload()
         self.status.configure(text=f"Imported {added} image(s).")
 
+    def import_pack(self) -> None:
+        """Copy a lineup pack folder or zip into the local lineup-data folder."""
+
+        choice = messagebox.askyesnocancel(
+            "Import pack",
+            "Import a .zip lineup pack?\n\nYes opens a zip file.\nNo opens a folder.\nCancel stops.",
+            parent=self.cards.winfo_toplevel(),
+        )
+        if choice is None:
+            return
+        parent = self.cards.winfo_toplevel()
+        if choice:
+            selected = filedialog.askopenfilename(
+                parent=parent,
+                title="Import lineup pack",
+                filetypes=[("Zip pack", "*.zip")],
+            )
+        else:
+            selected = filedialog.askdirectory(parent=parent, title="Import lineup pack folder")
+        if not selected:
+            return
+        self.import_pack_from(Path(selected))
+
+    def import_pack_from(self, path: Path) -> None:
+        try:
+            result = copy_lineup_pack(path, self.app.pack_dir)
+        except PackError as exc:
+            messagebox.showerror("Suit-O", str(exc))
+            return
+        self.reload()
+        self.status.configure(
+            text=(
+                f"Pack imported. {result.added} added, {result.replaced} replaced. "
+                "Images stay in lineup-data/ on this machine."
+            )
+        )
+
     def rename(self) -> None:
         card = self._selected()
         if card is None:
+            return
+        if not self._folder_card(card):
             return
         name = simpledialog.askstring("Suit-O", "New lineup name", initialvalue=card.path.stem)
         if not name:
@@ -241,6 +294,8 @@ class LineupsPanel:
         card = self._selected()
         if card is None:
             return
+        if not self._folder_card(card):
+            return
         text = simpledialog.askstring("Suit-O", "Caption", initialvalue=card.caption)
         if text is None:
             return
@@ -255,6 +310,8 @@ class LineupsPanel:
         card = self._selected()
         if card is None:
             return
+        if not self._folder_card(card):
+            return
         try:
             move_card(self.app.lineups_dir, self.map_name.get(), self.side.get(), card.filename, delta)
         except LibraryError as exc:
@@ -265,6 +322,8 @@ class LineupsPanel:
     def remove(self) -> None:
         card = self._selected()
         if card is None:
+            return
+        if not self._folder_card(card):
             return
         try:
             remove_card(card)
@@ -287,6 +346,7 @@ class LineupsPanel:
                 hotkey_next=self.hotkey_next.get(),
                 hotkey_previous=self.hotkey_previous.get(),
                 hotkey_toggle=self.hotkey_toggle.get(),
+                smokes_only=bool(self.smokes_only.get()),
             )
         except (ConfigError, ValueError, OSError) as exc:
             messagebox.showerror("Suit-O", str(exc))
@@ -297,6 +357,15 @@ class LineupsPanel:
         self.hotkey_toggle.set(settings.hotkey_toggle)
         self.status.configure(text="Overlay settings saved.")
         self._on_saved()
+
+    def _folder_card(self, card: LineupCard) -> bool:
+        if not card.lineup_id:
+            return True
+        messagebox.showerror(
+            "Suit-O",
+            "That lineup came from a pack. Import the pack again to replace it.",
+        )
+        return False
 
     def _selected(self) -> LineupCard | None:
         if not self.cards.curselection():

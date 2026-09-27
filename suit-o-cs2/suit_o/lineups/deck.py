@@ -28,10 +28,12 @@ class DeckView:
 class LineupDeck:
     """Remember map, side, and weapon across partial payloads, and cycle cards."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, *, pack_dir: Path | None = None) -> None:
         self.root = root
+        self.pack_dir = pack_dir
         self.hidden = False
         self.enabled = True
+        self.smokes_only = True
         self._index = 0
         self._map_key = ""
         self._side = ""
@@ -71,6 +73,10 @@ class LineupDeck:
         with self._lock:
             self.enabled = enabled
 
+    def set_smokes_only(self, smokes_only: bool) -> None:
+        with self._lock:
+            self.smokes_only = bool(smokes_only)
+
     def _apply_snapshot(self, snapshot: Snapshot | None) -> OverlayDecision:
         if snapshot is not None:
             if snapshot.map_present and snapshot.map_token:
@@ -102,7 +108,19 @@ class LineupDeck:
     def _cards_locked(self) -> list[LineupCard]:
         if not self._map_key or self._side not in {"t", "ct"}:
             return []
-        return list_cards(self.root, self._map_key, self._side)
+        cards = list_cards(self.root, self._map_key, self._side)
+        if self.pack_dir is not None:
+            from suit_o.lineups.pack import pack_cards
+
+            cards.extend(
+                pack_cards(
+                    self.pack_dir,
+                    self._map_key,
+                    self._side,
+                    smokes_only=self.smokes_only,
+                )
+            )
+        return cards
 
     def _view_locked(self, decision: OverlayDecision) -> DeckView:
         bucket = (decision.map_key, decision.side)

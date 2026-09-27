@@ -49,6 +49,19 @@ class ChangeDebouncer:
         return kinds
 
 
+def restart_is_blocked(activity: str | None, round_phase: str | None) -> bool:
+    """True only during a live round outside the main menu.
+
+    No game state yet does not block. Freezetime, overtime end, warmup, and
+    the menu all allow a process restart. Content can still reload while a
+    round is live; this only gates a restart and the Update button.
+    """
+
+    if (activity or "").strip().lower() == "menu":
+        return False
+    return (round_phase or "").strip().lower() == "live"
+
+
 def choose_reload(kinds: list[str]) -> str:
     """A code change restarts once. That restart also picks up content edits."""
 

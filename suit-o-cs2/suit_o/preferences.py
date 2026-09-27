@@ -46,6 +46,7 @@ def save_lineup_settings(
     hotkey_next: str | None = None,
     hotkey_previous: str | None = None,
     hotkey_toggle: str | None = None,
+    smokes_only: bool | None = None,
     voice_key: str = "",
     ptt_key: str = "",
 ) -> None:
@@ -69,10 +70,12 @@ def save_lineup_settings(
             hotkey_next,
             hotkey_previous,
             hotkey_toggle,
+            smokes_only,
         )
     ):
         return
     rendered_enabled = None if enabled is None else ("true" if enabled else "false")
+    rendered_smokes = None if smokes_only is None else ("true" if smokes_only else "false")
     rendered_width = None
     if width is not None:
         if isinstance(width, bool) or not isinstance(width, int) or not 160 <= width <= 800:
@@ -123,6 +126,8 @@ def save_lineup_settings(
     text = original.replace("\r\n", "\n")
     if rendered_enabled is not None:
         text = _replace_yaml_scalar(text, "enabled", rendered_enabled, parent="lineups")
+    if rendered_smokes is not None:
+        text = _replace_yaml_scalar(text, "smokes_only", rendered_smokes, parent="lineups")
     if rendered_width is not None:
         text = _replace_yaml_scalar(text, "width", rendered_width, parent="lineups")
     if rendered_opacity is not None:
