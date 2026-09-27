@@ -49,11 +49,11 @@ These steps assume Windows 10 or 11 and the default Steam library path. If CS2 i
 
    The file name has to stay `gamestate_integration_suito.cfg` (CS2 only loads files whose names start with `gamestate_integration_`).
 
-4. Leave the sample token in the repository. The first time Suit-O starts, it writes a random token into `config.local.yaml` and replaces that sample in the CS2 cfg from the previous step. The token is not logged. Suit-O only binds to `127.0.0.1`. If you copy the cfg after that first start, copy the token from `config.local.yaml` into the cfg's `auth` / `token`.
+4. Start Suit-O once before you restart CS2. Leave the sample token in the repository. That first start writes a random token into `config.local.yaml` and replaces the sample in the CS2 cfg from the previous step, which is how CS2 picks up the key. The token is not logged. Suit-O only binds to `127.0.0.1`. Double-click `Start Suit-O GUI.vbs` in this folder, or from PowerShell run `python -m suit_o.gui`. If you copy the cfg after that first start, copy the token from `config.local.yaml` into the cfg's `auth` / `token`.
 
-5. Quit Counter-Strike 2 completely if it is running, then start it again. The game reads GSI configs at launch.
+5. Quit Counter-Strike 2 completely if it is running, then start it again. The game reads the GSI config, including the key from the previous step, only at launch.
 
-6. Start the desktop window and leave it open while you play. Double-click `Start Suit-O GUI.vbs` in this folder (no console window). From PowerShell:
+6. Leave the desktop window open while you play. Double-click `Start Suit-O GUI.vbs` in this folder (no console window). From PowerShell:
 
    ```powershell
    python -m suit_o.gui
@@ -232,7 +232,7 @@ A remote voice and chat backend on a separate machine on the home network is wor
 
 ## Troubleshooting
 
-**No log lines when you play.** Confirm the cfg file is in `game\csgo\cfg\`, the name still starts with `gamestate_integration_`, and CS2 was restarted after the copy. The token in the cfg and in `config.local.yaml` must match. A mismatch is logged as `auth token mismatch`.
+**No log lines when you play.** Confirm the cfg file is in `game\csgo\cfg\`, the name still starts with `gamestate_integration_`, and you started Suit-O once before restarting CS2 so the game picked up the key. The token in the cfg and in `config.local.yaml` must match. A mismatch is logged as `auth token mismatch`.
 
 **Port already in use.** Change `server.port` and the `uri` in the cfg to the same new port, then restart both Suit-O and CS2.
 

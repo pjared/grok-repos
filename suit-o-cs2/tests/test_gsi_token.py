@@ -118,6 +118,15 @@ def test_a_corrupt_local_config_is_not_replaced(tmp_path: Path):
     assert backups[0].read_text(encoding="utf-8") == "speech: [\n"
 
 
+def test_readme_says_to_start_suit_o_before_restarting_cs2():
+    text = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+    start = text.find("Start Suit-O once before you restart CS2.")
+    restart = text.find("then start it again.")
+    assert start != -1
+    assert restart != -1
+    assert start < restart
+
+
 def test_a_steam_library_on_another_drive_is_found(tmp_path: Path):
     library = tmp_path / "SteamLibrary"
     cfg = library / "steamapps/common/Counter-Strike Global Offensive/game/csgo/cfg"
