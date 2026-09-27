@@ -14,7 +14,7 @@ from suit_o.local_config import (
     remember_installed_requirements,
     store_personal_settings,
 )
-from suit_o.models import EventType
+from suit_o.models import EventType, GameEvent
 from suit_o.gsi.payloads import make_payload
 from suit_o.reload import (
     ChangeDebouncer,
@@ -211,6 +211,25 @@ def test_invalid_config_and_lines_keep_the_previous_settings(tmp_path: Path):
     assert restart.restart is True
     assert app.config.server.token == "suito-local-change-me"
     assert app.config.speech.volume == 0.4
+
+
+def test_content_reload_keeps_per_line_cooldowns(tmp_path: Path):
+    lines = tmp_path / "lines.yaml"
+    lines.write_text("events:\n  kill:\n    - Hello from the stock file.\n", encoding="utf-8")
+    path = tmp_path / "config.yaml"
+    text = DEFAULT_CONFIG_PATH.read_text(encoding="utf-8")
+    text = text.replace("port: 3000", "port: 0")
+    text = text.replace("lines/lines.yaml", lines.as_posix())
+    path.write_text(text, encoding="utf-8")
+    app = SuitOApp(load_config(path), backend=StubSpeechBackend(), config_path=path)
+    kill = GameEvent(EventType.KILL, 36, {})
+    first = app.lines.decide(kill, 0)
+    assert first.status == "spoken"
+    assert app.reload_content().ok is True
+    blocked = app.lines.decide(kill, 1)
+    assert blocked.status == "cooldown"
+    assert blocked.text is None
+    assert app.lines.decide(kill, 3).status == "spoken"
 
 
 def test_restart_state_round_trip_and_launch_argv(tmp_path: Path):

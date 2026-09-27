@@ -852,6 +852,8 @@ class SuitOApp:
         loaded.speech.voices_dir = str(self.voices_dir)
         try:
             self.config = loaded
+            if isinstance(self.lines, YamlLineProvider):
+                provider.carry_clocks(self.lines)
             self.lines = provider
             self.detector.set_thresholds(loaded.thresholds)
             self.speech.preempt_min_priority = loaded.preempt_min_priority

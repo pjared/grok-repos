@@ -115,6 +115,22 @@ class YamlLineProvider(LineProvider):
         with self._lock:
             self.muted = muted
 
+    def carry_clocks(self, previous: YamlLineProvider) -> None:
+        """Keep per-line cooldowns, the global gap, and the last line spoken.
+
+        A content reload builds a new provider. Without this, a line that just
+        played can play again immediately.
+        """
+
+        with previous._lock:
+            last_at = dict(previous._last_at)
+            last_global = previous._last_global
+            last_line = dict(previous._last_line)
+        with self._lock:
+            self._last_at = last_at
+            self._last_global = last_global
+            self._last_line = last_line
+
     def select(self, event: GameEvent, now: float) -> str | None:
         return self.decide(event, now).text
 
