@@ -6,6 +6,7 @@ A copy already on PATH wins. The base Suit-O install does not require either.
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -41,6 +42,31 @@ def require_ffmpeg() -> str:
     if not exe:
         raise FfmpegError(FFMPEG_INSTALL)
     return exe
+
+
+_DURATION = re.compile(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)")
+
+
+def probe_duration(source: Path) -> float:
+    """Seconds of audio or video, from the file header. Does not decode it."""
+
+    if not source.is_file():
+        raise FfmpegError(f"File not found: {source}")
+    exe = require_ffmpeg()
+    try:
+        completed = subprocess.run(
+            [exe, "-hide_banner", "-i", str(source)],
+            capture_output=True,
+            check=False,
+        )
+    except OSError as exc:
+        raise FfmpegError(FFMPEG_INSTALL) from exc
+    text = completed.stderr.decode("utf-8", errors="replace")
+    match = _DURATION.search(text)
+    if not match:
+        raise FfmpegError(f"Could not read the length of {source.name}")
+    hours, minutes, seconds = match.groups()
+    return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
 
 
 def extract_audio(source: Path, dest: Path, *, sample_rate: int) -> None:

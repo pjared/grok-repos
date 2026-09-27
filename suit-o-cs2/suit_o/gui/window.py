@@ -40,6 +40,7 @@ from suit_o.gui.status import (
     selected_device_label,
     tone_color,
 )
+from suit_o.gui.drops import desktop_root
 from suit_o.gui.global_hotkeys import GlobalHotkeys
 from suit_o.gui.clips import ClipsPanel
 from suit_o.gui.lineups import LineupsPanel
@@ -77,7 +78,7 @@ class SuitOWindow:
         )
         app._on_settings_saved = self._ignore_own_save
 
-        self.root = tk.Tk()
+        self.root = desktop_root()
         self.root.title("Suit-O")
         self.root.geometry("860x900")
         self.root.minsize(720, 760)
@@ -114,6 +115,8 @@ class SuitOWindow:
         clips = ttk.Frame(training_book, padding=(4, 8, 4, 4))
         training_book.add(script, text="Script")
         training_book.add(clips, text="Clips")
+        self.training_book = training_book
+        self._clips_tab = clips
         script.columnconfigure(0, weight=1)
         clips.columnconfigure(0, weight=1)
         clips.rowconfigure(0, weight=1)
@@ -136,6 +139,7 @@ class SuitOWindow:
             app,
             on_profile_built=self._on_profile_built,
             schedule=lambda callback: self.root.after(0, callback),
+            on_long_file=self._open_long_recording,
         )
         self.clips_panel = ClipsPanel(
             clips,
@@ -147,6 +151,15 @@ class SuitOWindow:
         self.hotkeys = GlobalHotkeys()
         self._paint_volume_caption(app.config.speech.volume)
         self._ui_ready = True
+
+    def _open_long_recording(self, path) -> None:
+        """A recording of 30 seconds or more is cut on the Clips page."""
+
+        name = self.training_panel.name.get().strip() or "Suit-O"
+        self.clips_panel.voice.set(name)
+        self.clips_panel.reload_library()
+        self.training_book.select(self._clips_tab)
+        self.clips_panel.load_file(path)
 
     def _on_profile_built(self, name: str) -> None:
         self.voice_panel.reload_voices()

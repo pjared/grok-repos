@@ -8,13 +8,23 @@ from __future__ import annotations
 
 import threading
 import tkinter as tk
-from tkinter import messagebox, ttk
+from pathlib import Path
+from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from suit_o.app import SuitOApp
 from suit_o.config import ConfigError
+from suit_o.gui.drops import enable_file_drop
+from suit_o.voice.clips import ClipError
+from suit_o.voice.intake import IntakeError, classify_path, import_short_clip
+from suit_o.voice.library import ClipLibrary, LibraryError
 from suit_o.voice.runtime import runtime_status
 from suit_o.voice.script import DEFAULT_SCRIPT_PATH, ScriptError, load_script
 from suit_o.voice.session import MIN_BUILD_SECONDS, RecordingSession, SessionError
+
+_FILE_TYPES = [
+    ("Recordings", "*.wav *.mp3 *.m4a *.flac *.ogg *.mp4 *.mkv *.mov *.webm *.avi"),
+    ("All files", "*.*"),
+]
 
 CONSENT = (
     "Record your own voice, or someone who agreed to be recorded. "
@@ -62,10 +72,11 @@ class _LiveRecorder:
 
 
 class TrainingPanel:
-    def __init__(self, parent: ttk.Frame, app: SuitOApp, *, on_profile_built, schedule) -> None:
+    def __init__(self, parent: ttk.Frame, app: SuitOApp, *, on_profile_built, schedule, on_long_file=None) -> None:
         self.app = app
         self._on_profile_built = on_profile_built
         self._schedule = schedule
+        self._on_long_file = on_long_file
         self._recorder = _LiveRecorder()
         self._playing = False
         self._meter_job: str | None = None
@@ -148,6 +159,25 @@ class TrainingPanel:
             text=f"Script file: {DEFAULT_SCRIPT_PATH.name}. About a minute of audio is required (aim for 1–3 minutes).",
             wraplength=680,
         ).grid(row=11, column=0, sticky="w", pady=(4, 0))
+
+        files = ttk.Frame(parent)
+        files.grid(row=12, column=0, sticky="ew", pady=(8, 0))
+        files.columnconfigure(2, weight=1)
+        ttk.Button(files, text="Add files...", command=self.add_files).grid(row=0, column=0, sticky="w")
+        self.library_label = ttk.Label(files, text="Usable: 0s")
+        self.library_label.grid(row=0, column=1, sticky="w", padx=(12, 0))
+        self.name.trace_add("write", lambda *_args: self._paint_duration())
+        ttk.Label(
+            parent,
+            text=(
+                "Drop wav, mp3, m4a, flac, ogg, or a video here. "
+                "Under 30 seconds becomes a library clip with a transcript you can edit. "
+                "Longer files open in Clips so you can cut them. Build voice uses the included clips."
+            ),
+            wraplength=680,
+            justify="left",
+        ).grid(row=13, column=0, sticky="ew", pady=(4, 0))
+        enable_file_drop(parent, self.import_paths)
 
         self.reload_microphones()
         self._paint()
@@ -257,6 +287,76 @@ class TrainingPanel:
             return
         self._paint()
 
+    def add_files(self) -> None:
+        selected = filedialog.askopenfilenames(
+            parent=self.line_text.winfo_toplevel(),
+            title="Add recordings",
+            filetypes=_FILE_TYPES,
+        )
+        if not selected:
+            return
+        self.import_paths([Path(item) for item in selected])
+
+    def import_paths(
+        self,
+        paths: list[Path],
+        *,
+        transcripts: dict[Path, str] | None = None,
+        ask_transcript: bool | None = None,
+    ) -> None:
+        """Add short recordings to the named voice. Long ones go to Clips."""
+
+        if ask_transcript is None:
+            ask_transcript = transcripts is None
+        name = self.name.get().strip() or "Suit-O"
+        library = ClipLibrary(self.app.voices_dir, name)
+        added = 0
+        longs: list[Path] = []
+        problems: list[str] = []
+        for raw in paths:
+            item = classify_path(Path(raw))
+            if item.kind == "rejected":
+                problems.append(item.detail)
+                continue
+            if item.kind == "long":
+                longs.append(item.path)
+                continue
+            supplied = _supplied_transcript(item.path, transcripts)
+            if supplied is not None:
+                transcript = supplied
+            elif ask_transcript:
+                typed = simpledialog.askstring(
+                    "Suit-O",
+                    f"Transcript for {item.path.name}",
+                    parent=self.line_text.winfo_toplevel(),
+                )
+                transcript = "" if typed is None else typed
+            else:
+                transcript = ""
+            try:
+                import_short_clip(item.path, library, transcript=transcript)
+            except (IntakeError, ClipError, LibraryError, OSError) as exc:
+                problems.append(str(exc))
+                continue
+            added += 1
+        if longs and self._on_long_file is not None:
+            self._on_long_file(longs[0])
+        usable = self.session.recorded_seconds + library.included_duration()
+        bits: list[str] = []
+        if added:
+            bits.append(f"Added {added} clip(s) to {name}. Edit the transcript on the Clips page.")
+        if longs:
+            rest = ""
+            if len(longs) > 1:
+                rest = " Also long: " + ", ".join(path.name for path in longs[1:]) + "."
+            where = "Opened" if self._on_long_file is not None else "Cut"
+            bits.append(f"{where} {longs[0].name} in Clips (30s or longer).{rest}")
+        if problems:
+            bits.append(" ".join(problems))
+        bits.append(f"Usable audio: {usable:.0f}s.")
+        self._paint()
+        self.status.configure(text=" ".join(bits))
+
     def build(self) -> None:
         if self.session.state != "idle":
             messagebox.showerror("Suit-O", "Stop recording or playback before building")
@@ -326,13 +426,7 @@ class TrainingPanel:
 
     def _paint(self) -> None:
         session = self.session
-        self.progress.configure(
-            text=(
-                f"{session.recorded_count} of {session.total} recorded"
-                f" · {session.recorded_seconds:.0f}s"
-                f" (need about {MIN_BUILD_SECONDS:.0f}s)"
-            )
-        )
+        self._paint_duration()
         self.line_label.configure(text=f"Line {session.index + 1} of {session.total}")
         self.line_text.configure(state="normal")
         self.line_text.delete("1.0", "end")
@@ -343,4 +437,36 @@ class TrainingPanel:
         elif session.has_take():
             self.status.configure(text="This line has a take. Play it back, or re-record it.")
         else:
-            self.status.configure(text="Record this line in your own voice.")
+            self.status.configure(text="Record this line in your own voice, or add a recording you already have.")
+
+    def _paint_duration(self) -> None:
+        session = self.session
+        library_seconds = _library_seconds(self.app.voices_dir, self.name.get())
+        usable = session.recorded_seconds + library_seconds
+        self.progress.configure(
+            text=(
+                f"{session.recorded_count} of {session.total} recorded"
+                f" · {usable:.0f}s usable"
+                f" (need about {MIN_BUILD_SECONDS:.0f}s)"
+            )
+        )
+        self.library_label.configure(
+            text=f"Usable: {usable:.0f}s (script {session.recorded_seconds:.0f}s + library {library_seconds:.0f}s)"
+        )
+
+
+def _supplied_transcript(path: Path, transcripts: dict | None) -> str | None:
+    if transcripts is None:
+        return None
+    if path in transcripts:
+        return str(transcripts[path])
+    if path.name in transcripts:
+        return str(transcripts[path.name])
+    return ""
+
+
+def _library_seconds(voices_dir: Path, voice_name: str) -> float:
+    try:
+        return ClipLibrary(voices_dir, voice_name.strip() or "Suit-O").included_duration()
+    except (LibraryError, OSError):
+        return 0.0
