@@ -12,7 +12,7 @@ New notes go under `## [Unreleased]`. Every push to `main` updates this file in 
 
 ### Changed
 
-- Voice synthesis uses NVIDIA CUDA or AMD ROCm when that PyTorch build is available, and the CPU otherwise. DirectML is detected and left unused, because Chatterbox does not run on it. The tab names the stack and not the graphics card.
+- Voice synthesis uses NVIDIA CUDA or AMD ROCm when that PyTorch build is available, and the CPU otherwise. DirectML is detected and left unused, because Chatterbox does not run on it. The tab names the stack and not the graphics card. (`f7c802e`)
 
 ### Added
 
