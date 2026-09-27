@@ -18,7 +18,8 @@ from suit_o.speech.devices import (
     select_output_token,
 )
 from suit_o.speech.factory import create_backend
-from suit_o.speech.pyttsx3_backend import Pyttsx3Backend
+from suit_o.speech.pyttsx3_backend import Pyttsx3Backend, install_sapi_xml_speak
+from suit_o.speech.tuning import SAPI_SPEAK_ASYNC, SAPI_SPEAK_XML, VoiceTuning
 from suit_o.speech.remote import RemoteTtsBackend
 from suit_o.speech.service import SpeechService
 from suit_o.speech.stub import StubSpeechBackend
@@ -306,6 +307,70 @@ def test_substring_that_matches_two_outputs_uses_the_first_and_warns(caplog):
     assert JBL_CHAT in caplog.text
 
 
+def test_preview_override_does_not_replace_saved_tuning():
+    backend = StubSpeechBackend()
+    service = SpeechService(backend, preempt_min_priority=70)
+    service.start()
+    saved = VoiceTuning(voice="", rate=150, volume=0.85, pitch=1, pause_ms=0, emphasis="none")
+    draft = VoiceTuning(voice="", rate=300, volume=0.4, pitch=-4, pause_ms=50, emphasis="mild")
+    try:
+        service.apply_tuning(saved)
+        service.set_muted(True)
+        service.preview("preview line", draft)
+        assert service.wait_until(lambda: backend.spoken == ["preview line"], 2)
+        service.set_muted(False)
+        service.submit(Utterance("kill", "game line", 36))
+        assert service.wait_until(lambda: backend.spoken == ["preview line", "game line"], 2)
+        assert backend.spoken_tuning[0].pitch == -4
+        assert backend.spoken_tuning[0].rate == 300
+        assert backend.spoken_tuning[0].emphasis == "mild"
+        assert backend.spoken_tuning[0].pause_ms == 50
+        assert backend.spoken_tuning[1].pitch == 1
+        assert backend.spoken_tuning[1].rate == 150
+        assert backend.spoken_tuning[1].emphasis == "none"
+        assert [item.event_type for item in service.history] == ["preview", "kill"]
+    finally:
+        service.stop()
+
+
+def test_pyttsx3_uses_sapi_xml_for_pitch_and_plain_text_otherwise():
+    driver = _RecordingDriver()
+    install_sapi_xml_speak(driver)
+    driver.say("Hello")
+    assert driver.calls == [("Hello", SAPI_SPEAK_ASYNC)]
+    driver._suito_use_xml = True
+    marked = '<pitch absmiddle="2">Hello</pitch>'
+    driver.say(marked)
+    assert driver.calls[-1] == (marked, SAPI_SPEAK_ASYNC | SAPI_SPEAK_XML)
+    assert driver._suito_use_xml is False
+    driver.say("Hello again")
+    assert driver.calls[-1] == ("Hello again", SAPI_SPEAK_ASYNC)
+
+    settings = SpeechConfig(
+        backend="pyttsx3",
+        voice="",
+        rate=185,
+        volume=0.85,
+        output_device="",
+    )
+    backend = Pyttsx3Backend(settings)
+    engine = _SpeakingEngine()
+    backend._engine = engine
+    backend._ready = True
+    assert backend.speak("Hello") is True
+    assert engine.said == ["Hello"]
+    assert engine.driver.calls[-1][1] == SAPI_SPEAK_ASYNC
+    assert backend.speak("Hello", tuning=VoiceTuning(pitch=2, emphasis="mild")) is True
+    assert 'absmiddle="2"' in engine.said[-1]
+    assert "<emph>" in engine.said[-1]
+    assert engine.driver.calls[-1][1] == SAPI_SPEAK_ASYNC | SAPI_SPEAK_XML
+    assert settings.pitch == 0
+    assert settings.emphasis == "none"
+    assert backend.speak("After") is True
+    assert engine.said[-1] == "After"
+    assert engine.driver.calls[-1][1] == SAPI_SPEAK_ASYNC
+
+
 def test_sapi_enumeration_is_empty_when_not_on_windows():
     if sys.platform == "win32":
         return
@@ -319,6 +384,50 @@ class _Token:
 
     def GetDescription(self) -> str:
         return self.description
+
+
+class _RecordingDriver:
+    """Stand-in for pyttsx3's SAPI driver. ``say`` matches the stock async call."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, int]] = []
+        self._proxy = SimpleNamespace(setBusy=lambda _value: None, notify=lambda _name: None)
+        self._tts = self
+        self._speaking = False
+        self._current_text = ""
+
+    def Speak(self, text: str, flags: int) -> None:
+        self.calls.append((str(text), flags))
+
+    def say(self, text: str) -> None:
+        self._proxy.setBusy(True)
+        self._proxy.notify("started-utterance")
+        self._speaking = True
+        self._current_text = text
+        self._tts.Speak(str(text), SAPI_SPEAK_ASYNC)
+
+
+class _SpeakingEngine:
+    """pyttsx3 engine enough to record say() and forward it to the driver."""
+
+    def __init__(self) -> None:
+        self.driver = _RecordingDriver()
+        self.proxy = SimpleNamespace(_driver=self.driver)
+        self.said: list[str] = []
+        self.props: dict[str, object] = {}
+
+    def say(self, text: str) -> None:
+        self.said.append(text)
+        self.driver.say(text)
+
+    def runAndWait(self) -> None:
+        return None
+
+    def setProperty(self, key: str, value: object) -> None:
+        self.props[key] = value
+
+    def stop(self) -> None:
+        return None
 
 
 class _Engine:

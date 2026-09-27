@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty, Full, Queue
 
-from suit_o.config import Config
+from suit_o.config import Config, ConfigError
 from suit_o.events.detector import EventDetector
 from suit_o.gsi.parse import parse_payload
 from suit_o.gsi.server import GsiServer
@@ -27,6 +27,12 @@ from suit_o.speech.devices import (
 )
 from suit_o.speech.factory import create_backend
 from suit_o.speech.service import SpeechService
+from suit_o.speech.tuning import (
+    VoiceTuning,
+    list_sapi_voice_names,
+    normalize_tuning,
+    resolve_voice_name,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -74,10 +80,12 @@ class SuitOApp:
         clock=None,
         config_path: Path | None = None,
         output_devices: Callable[[], list[str]] | None = None,
+        voices: Callable[[], list[str]] | None = None,
     ) -> None:
         self.config = config
         self.config_path = config_path
         self._output_devices = output_devices
+        self._voices = voices
         self._clock = clock or time.monotonic
         self.backend = backend if backend is not None else create_backend(config.speech)
         self.speech = SpeechService(self.backend, config.preempt_min_priority)
@@ -110,6 +118,7 @@ class SuitOApp:
             return
         self._started = True
         self.speech.start()
+        self.speech.apply_tuning(self.current_tuning())
         self.speech.set_muted(bool(getattr(self.lines, "muted", self.config.mute)))
         self._worker = threading.Thread(target=self._worker_loop, name="suit-o-gsi", daemon=True)
         self._worker.start()
@@ -206,6 +215,86 @@ class SuitOApp:
                 self._record("Output device: Windows default playback device")
         return resolved
 
+    def voice_names(self) -> list[str]:
+        """Installed SAPI voice names, or the injected list used by tests."""
+
+        if self._voices is not None:
+            listed = self._voices()
+        else:
+            listed = list_sapi_voice_names()
+        names: list[str] = []
+        for name in listed:
+            cleaned = str(name).strip()
+            if cleaned and cleaned not in names:
+                names.append(cleaned)
+        return names
+
+    def current_tuning(self) -> VoiceTuning:
+        speech = self.config.speech
+        return VoiceTuning(
+            voice=speech.voice,
+            rate=speech.rate,
+            volume=float(speech.volume),
+            pitch=speech.pitch,
+            pause_ms=speech.pause_ms,
+            emphasis=speech.emphasis,
+        )
+
+    def apply_tuning(self, tuning: VoiceTuning) -> VoiceTuning:
+        """Validate a voice panel snapshot and use it for later in-game lines.
+
+        Does not write ``config.yaml``. Call :meth:`save_preferences` for that.
+        """
+
+        applied = self._resolve_tuning(tuning)
+        speech = self.config.speech
+        speech.voice = applied.voice
+        speech.rate = applied.rate
+        speech.volume = applied.volume
+        speech.pitch = applied.pitch
+        speech.pause_ms = applied.pause_ms
+        speech.emphasis = applied.emphasis
+        self.speech.apply_tuning(applied)
+        return applied
+
+    def reset_tuning(self) -> VoiceTuning:
+        """Restore the stock voice knobs. The caller saves them."""
+
+        return self.apply_tuning(VoiceTuning.defaults())
+
+    def preview_voice(self, text: str, tuning: VoiceTuning | None = None) -> str:
+        """Speak ``text`` on the current output device, even when muted.
+
+        ``tuning`` is used for this line only. Saved settings stay as they are
+        until :meth:`apply_tuning`.
+        """
+
+        line = (text or "").strip()
+        if not line:
+            raise ValueError("Preview needs a line to speak")
+        if len(line) > 500:
+            line = line[:500].rstrip()
+        override = None if tuning is None else self._resolve_tuning(tuning)
+        self._record(f"preview: {line}")
+        self.speech.preview(line, override)
+        return line
+
+    def _resolve_tuning(self, tuning: VoiceTuning) -> VoiceTuning:
+        try:
+            normalized = normalize_tuning(tuning)
+            names = self.voice_names()
+            voice = resolve_voice_name(normalized.voice, names if names else None)
+        except ValueError as exc:
+            raise ConfigError(str(exc)) from exc
+        return VoiceTuning(
+            voice=voice,
+            rate=normalized.rate,
+            volume=normalized.volume,
+            pitch=normalized.pitch,
+            pause_ms=normalized.pause_ms,
+            emphasis=normalized.emphasis,
+        )
+
     def test_voice(self, text: str | None = None) -> str:
         """Speak a line on the current device, even when Suit-O is muted."""
 
@@ -220,15 +309,24 @@ class SuitOApp:
         return line
 
     def save_preferences(self) -> None:
-        """Write volume, mute, and output device back to the config file."""
+        """Write volume, mute, output device, and voice tuning to the config file.
+
+        This stores the live settings, not an unsaved draft on the voice panel.
+        """
 
         if self.config_path is None:
             raise RuntimeError("Suit-O has no config file to update")
+        speech = self.config.speech
         save_user_settings(
             self.config_path,
-            volume=self.config.speech.volume,
+            volume=speech.volume,
             muted=self.muted,
-            output_device=self.config.speech.output_device,
+            output_device=speech.output_device,
+            voice=speech.voice,
+            rate=speech.rate,
+            pitch=speech.pitch,
+            pause_ms=speech.pause_ms,
+            emphasis=speech.emphasis,
         )
 
     def activity(self) -> tuple[Activity, ...]:

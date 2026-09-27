@@ -1,7 +1,9 @@
-"""Save the desktop window's volume, mute, and output device.
+"""Save the desktop window's volume, mute, output device, and voice tuning.
 
 The rest of ``config.yaml`` — comments, token, cooldowns — stays as written.
-Only the three keys the window edits are replaced.
+Only the keys the caller passes are replaced. Voice, rate, pitch, pause, and
+emphasis are backend-agnostic: a future remote TTS server can read the same
+fields.
 """
 
 from __future__ import annotations
@@ -39,18 +41,41 @@ def save_user_settings(
     volume: float | None = None,
     muted: bool | None = None,
     output_device: str | None = None,
+    voice: str | None = None,
+    rate: int | None = None,
+    pitch: int | None = None,
+    pause_ms: int | None = None,
+    emphasis: str | None = None,
 ) -> None:
-    """Update volume, mute, and output device in ``path``.
+    """Update the passed settings in ``path``. Omitted arguments are left alone.
 
     Missing keys are inserted. A microphone or virtual-cable name is refused
-    and the file is left untouched.
+    and the file is left untouched. Tuning numbers use the same ranges as
+    :func:`suit_o.speech.tuning.normalize_tuning`.
     """
 
-    if volume is None and muted is None and output_device is None:
+    if all(
+        value is None
+        for value in (
+            volume,
+            muted,
+            output_device,
+            voice,
+            rate,
+            pitch,
+            pause_ms,
+            emphasis,
+        )
+    ):
         return
     rendered_volume: str | None = None
     rendered_device: str | None = None
     rendered_mute: str | None = None
+    rendered_voice: str | None = None
+    rendered_rate: str | None = None
+    rendered_pitch: str | None = None
+    rendered_pause: str | None = None
+    rendered_emphasis: str | None = None
     if volume is not None:
         rendered_volume = format_volume(clamp_volume(volume))
     if output_device is not None:
@@ -64,6 +89,20 @@ def save_user_settings(
         rendered_device = json.dumps(cleaned)
     if muted is not None:
         rendered_mute = "true" if muted else "false"
+    if any(value is not None for value in (voice, rate, pitch, pause_ms, emphasis)):
+        (
+            rendered_voice,
+            rendered_rate,
+            rendered_pitch,
+            rendered_pause,
+            rendered_emphasis,
+        ) = _render_tuning(
+            voice=voice,
+            rate=rate,
+            pitch=pitch,
+            pause_ms=pause_ms,
+            emphasis=emphasis,
+        )
 
     # Read bytes so Windows newlines stay intact. Path.read_text translates them.
     original = path.read_bytes().decode("utf-8")
@@ -73,12 +112,67 @@ def save_user_settings(
         text = _replace_yaml_scalar(text, "volume", rendered_volume, parent="speech")
     if rendered_device is not None:
         text = _replace_yaml_scalar(text, "output_device", rendered_device, parent="speech")
+    if rendered_voice is not None:
+        text = _replace_yaml_scalar(text, "voice", rendered_voice, parent="speech")
+    if rendered_rate is not None:
+        text = _replace_yaml_scalar(text, "rate", rendered_rate, parent="speech")
+    if rendered_pitch is not None:
+        text = _replace_yaml_scalar(text, "pitch", rendered_pitch, parent="speech")
+    if rendered_pause is not None:
+        text = _replace_yaml_scalar(text, "pause_ms", rendered_pause, parent="speech")
+    if rendered_emphasis is not None:
+        text = _replace_yaml_scalar(text, "emphasis", rendered_emphasis, parent="speech")
     if rendered_mute is not None:
         text = _replace_yaml_scalar(text, "mute", rendered_mute, parent=None)
     if not text.endswith("\n"):
         text += "\n"
     payload = text.replace("\n", newline).encode("utf-8")
     _atomic_write(path, payload)
+
+
+def _render_tuning(
+    *,
+    voice: str | None,
+    rate: int | None,
+    pitch: int | None,
+    pause_ms: int | None,
+    emphasis: str | None,
+) -> tuple[str | None, str | None, str | None, str | None, str | None]:
+    """Validate provided tuning fields and return YAML scalars.
+
+    A ``None`` argument is not written. Defaults fill the gaps only so one
+    field can be checked on its own.
+    """
+
+    from suit_o.speech.tuning import (
+        DEFAULT_EMPHASIS,
+        DEFAULT_PAUSE_MS,
+        DEFAULT_PITCH,
+        DEFAULT_RATE,
+        TuningError,
+        VoiceTuning,
+        normalize_tuning,
+    )
+
+    try:
+        checked = normalize_tuning(
+            VoiceTuning(
+                voice="" if voice is None else voice,
+                rate=DEFAULT_RATE if rate is None else rate,
+                pitch=DEFAULT_PITCH if pitch is None else pitch,
+                pause_ms=DEFAULT_PAUSE_MS if pause_ms is None else pause_ms,
+                emphasis=DEFAULT_EMPHASIS if emphasis is None else emphasis,
+            )
+        )
+    except TuningError as exc:
+        raise ConfigError(str(exc)) from exc
+    return (
+        None if voice is None else json.dumps(checked.voice),
+        None if rate is None else str(checked.rate),
+        None if pitch is None else str(checked.pitch),
+        None if pause_ms is None else str(checked.pause_ms),
+        None if emphasis is None else json.dumps(checked.emphasis),
+    )
 
 
 def _split_lines(text: str) -> list[str]:

@@ -55,12 +55,22 @@ class RemoteSpeechConfig:
 
 @dataclass
 class SpeechConfig:
+    """Speech settings shared by the desktop panel and every backend.
+
+    ``voice``, ``rate``, ``volume``, ``pitch``, ``pause_ms``, and ``emphasis``
+    are not tied to SAPI. A future remote or cloned-voice backend can read
+    the same fields. ``output_device`` is the local playback endpoint.
+    """
+
     backend: str
     voice: str
     rate: int
     volume: float
     output_device: str
     remote: RemoteSpeechConfig = field(default_factory=RemoteSpeechConfig)
+    pitch: int = 0
+    pause_ms: int = 0
+    emphasis: str = "none"
 
 
 @dataclass
@@ -185,16 +195,29 @@ def parse_config(raw: dict, *, config_path: Path | None = None) -> Config:
             "on the home LAN and is not implemented in v1. Use 'pyttsx3'."
         )
 
-    voice = str(speech_raw.get("voice") or "").strip()
-    rate = _as_int(speech_raw.get("rate", 185), "speech.rate")
-    if not 80 <= rate <= 400:
-        raise ConfigError("speech.rate must be between 80 and 400 words per minute")
-    volume = speech_raw.get("volume", 0.85)
-    if isinstance(volume, bool) or not isinstance(volume, (int, float)):
-        raise ConfigError("speech.volume must be a number from 0.0 to 1.0")
-    volume_f = float(volume)
-    if not 0.0 <= volume_f <= 1.0:
-        raise ConfigError("speech.volume must be between 0.0 and 1.0")
+    from suit_o.speech.tuning import TuningError, VoiceTuning, normalize_tuning
+
+    raw_emphasis = speech_raw.get("emphasis", "none")
+    if raw_emphasis is None:
+        raw_emphasis = "none"
+    if not isinstance(raw_emphasis, str):
+        raise ConfigError("speech.emphasis must be none, mild, or strong")
+    try:
+        tuning = normalize_tuning(
+            VoiceTuning(
+                voice=str(speech_raw.get("voice") or ""),
+                rate=speech_raw.get("rate", 185),
+                volume=speech_raw.get("volume", 0.85),
+                pitch=speech_raw.get("pitch", 0),
+                pause_ms=speech_raw.get("pause_ms", 0),
+                emphasis=raw_emphasis,
+            )
+        )
+    except TuningError as exc:
+        raise ConfigError(str(exc)) from exc
+    voice = tuning.voice
+    rate = tuning.rate
+    volume_f = tuning.volume
 
     output_device = str(speech_raw.get("output_device") or "").strip()
     if is_disallowed_output_device(output_device):
@@ -305,6 +328,9 @@ def parse_config(raw: dict, *, config_path: Path | None = None) -> Config:
             volume=volume_f,
             output_device=output_device,
             remote=RemoteSpeechConfig(url=remote_url),
+            pitch=tuning.pitch,
+            pause_ms=tuning.pause_ms,
+            emphasis=tuning.emphasis,
         ),
         mute=mute,
         default_cooldown=default_cooldown,

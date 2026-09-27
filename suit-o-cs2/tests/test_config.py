@@ -28,6 +28,11 @@ def test_shipped_config_loads_and_warns_about_the_sample_token():
     assert config.server.port == 3000
     assert config.speech.backend == "pyttsx3"
     assert config.speech.output_device == ""
+    assert config.speech.voice == ""
+    assert config.speech.rate == 185
+    assert config.speech.pitch == 0
+    assert config.speech.pause_ms == 0
+    assert config.speech.emphasis == "none"
     assert config.ptt.keybind == ""
     assert config.ptt.cs2_voice_key == "v"
     assert config.lines_path.is_file()
@@ -130,6 +135,42 @@ def test_rejects_public_bind_short_token_bad_device_and_remote_backend():
     except ConfigError:
         raised_volume = True
     assert raised_volume
+
+
+def test_tuning_defaults_when_keys_are_missing_and_bad_values_are_refused():
+    raw = _raw()
+    for key in ("voice", "rate", "pitch", "pause_ms", "emphasis"):
+        raw["speech"].pop(key, None)
+    config = parse_config(raw)
+    assert config.speech.voice == ""
+    assert config.speech.rate == 185
+    assert config.speech.volume == 0.85
+    assert config.speech.pitch == 0
+    assert config.speech.pause_ms == 0
+    assert config.speech.emphasis == "none"
+
+    raw = _raw()
+    raw["speech"]["voice"] = "default"
+    assert parse_config(raw).speech.voice == ""
+
+    for key, value, snippet in (
+        ("pitch", 11, "pitch"),
+        ("pitch", True, "integer"),
+        ("pause_ms", 1001, "pause_ms"),
+        ("pause_ms", 1.5, "integer"),
+        ("emphasis", "loud", "emphasis"),
+        ("emphasis", True, "emphasis"),
+        ("rate", 10, "rate"),
+    ):
+        raw = _raw()
+        raw["speech"][key] = value
+        try:
+            parse_config(raw)
+            raised = False
+        except ConfigError as exc:
+            raised = True
+            assert snippet in str(exc)
+        assert raised
 
 
 def test_remote_url_is_ignored(tmp_path: Path):

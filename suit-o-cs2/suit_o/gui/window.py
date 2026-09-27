@@ -1,12 +1,15 @@
 """tkinter window. It paints snapshots and forwards clicks to SuitOApp.
 
-Nothing in this module decides which device is legal or when a line may
-play. That stays in the core so it can be tested without a display.
+Nothing in this module decides which device is legal, which voice exists, or
+when a line may play. That stays in the core so it can be tested without a
+display.
 """
 
 from __future__ import annotations
 
 import logging
+from contextlib import contextmanager
+
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -21,6 +24,7 @@ from suit_o.gui.status import (
     selected_device_label,
     tone_color,
 )
+from suit_o.gui.voice import VoicePanel
 from suit_o.preferences import clamp_volume
 from suit_o.speech.devices import WINDOWS_DEFAULT_LABEL
 
@@ -33,6 +37,7 @@ class SuitOWindow:
         self._closed = False
         self._ui_ready = False
         self._dragging_volume = False
+        self._syncing_volume = False
         self._save_job: str | None = None
         self._save_error_shown = False
         self._last_activity_seq = 0
@@ -40,22 +45,47 @@ class SuitOWindow:
 
         self.root = tk.Tk()
         self.root.title("Suit-O")
-        self.root.geometry("640x560")
-        self.root.minsize(520, 440)
+        self.root.geometry("700x680")
+        self.root.minsize(560, 520)
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
 
         frame = ttk.Frame(self.root, padding=(16, 12, 16, 12))
         frame.grid(row=0, column=0, sticky="nsew")
-        frame.columnconfigure(1, weight=1)
-        frame.rowconfigure(9, weight=1)
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(2, weight=1)
 
         ttk.Label(frame, text="Suit-O", font=("TkDefaultFont", 16, "bold")).grid(
-            row=0, column=0, columnspan=3, sticky="w"
+            row=0, column=0, sticky="w"
         )
-        ttk.Label(frame, text="Local CS2 companion").grid(
-            row=1, column=0, columnspan=3, sticky="w", pady=(0, 8)
+        ttk.Label(frame, text="Local CS2 companion").grid(row=1, column=0, sticky="w", pady=(0, 8))
+
+        self.notebook = ttk.Notebook(frame)
+        self.notebook.grid(row=2, column=0, sticky="nsew")
+        listener = ttk.Frame(self.notebook, padding=(8, 8, 8, 8))
+        voice = ttk.Frame(self.notebook, padding=(8, 8, 8, 8))
+        self.notebook.add(listener, text="Listener")
+        self.notebook.add(voice, text="Voice")
+        self._build_listener(listener)
+
+        self.volume = tk.DoubleVar(value=round(app.config.speech.volume * 100))
+        self.scale.configure(variable=self.volume, command=self._on_volume)
+        self.voice_panel = VoicePanel(
+            voice,
+            app,
+            volume=self.volume,
+            on_volume=self._on_volume,
+            on_volume_press=self._volume_press,
+            on_volume_release=self._volume_release,
+            hold_updates=self._hold_volume,
+            paint_volume=self._paint_volume_caption,
         )
+        self._paint_volume_caption(app.config.speech.volume)
+        self._ui_ready = True
+
+    def _build_listener(self, frame: ttk.Frame) -> None:
+        frame.columnconfigure(1, weight=1)
+        frame.rowconfigure(9, weight=1)
 
         self.listener_dot = tk.Label(frame, text="●", font=("TkDefaultFont", 12))
         self.listener_dot.grid(row=2, column=0, sticky="w")
@@ -78,21 +108,12 @@ class SuitOWindow:
         self.mute_button = ttk.Button(controls, text="Mute", width=12, command=self._toggle_mute)
         self.mute_button.grid(row=0, column=0, sticky="w")
         ttk.Label(controls, text="Volume").grid(row=0, column=1, sticky="e", padx=(16, 8))
-        self.volume = tk.DoubleVar(value=round(app.config.speech.volume * 100))
-        self.scale = ttk.Scale(
-            controls,
-            from_=0,
-            to=100,
-            orient="horizontal",
-            variable=self.volume,
-            command=self._on_volume,
-        )
+        self.scale = ttk.Scale(controls, from_=0, to=100, orient="horizontal")
         self.scale.grid(row=0, column=2, sticky="ew")
         self.scale.bind("<ButtonPress-1>", self._volume_press)
         self.scale.bind("<ButtonRelease-1>", self._volume_release)
         self.volume_caption = ttk.Label(controls, width=5, anchor="e")
         self.volume_caption.grid(row=0, column=3, padx=(8, 0))
-        self._paint_volume_caption(app.config.speech.volume)
 
         device_row = ttk.Frame(frame)
         device_row.grid(row=6, column=0, columnspan=3, sticky="ew", pady=(8, 0))
@@ -108,13 +129,13 @@ class SuitOWindow:
 
         buttons = ttk.Frame(frame)
         buttons.grid(row=8, column=0, columnspan=3, sticky="new")
-        ttk.Button(buttons, text="Test voice", command=self._test_voice).grid(
-            row=0, column=0, sticky="w"
-        )
+        ttk.Button(buttons, text="Test voice", command=self._test_voice).grid(row=0, column=0, sticky="w")
         ttk.Button(buttons, text="Refresh devices", command=self._reload_devices).grid(
             row=0, column=1, sticky="w", padx=(8, 0)
         )
-        ttk.Label(buttons, text="Recent events").grid(row=1, column=0, columnspan=2, sticky="w", pady=(10, 4))
+        ttk.Label(buttons, text="Recent events").grid(
+            row=1, column=0, columnspan=2, sticky="w", pady=(10, 4)
+        )
 
         log_frame = ttk.Frame(frame)
         log_frame.grid(row=9, column=0, columnspan=3, sticky="nsew")
@@ -137,8 +158,6 @@ class SuitOWindow:
         self.log.bind("<MouseWheel>", self._on_mousewheel)
         self.log.bind("<Button-4>", lambda _event: self.log.yview_scroll(-1, "units"))
         self.log.bind("<Button-5>", lambda _event: self.log.yview_scroll(1, "units"))
-
-        self._ui_ready = True
 
     def run(self) -> None:
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -174,7 +193,7 @@ class SuitOWindow:
         self._save()
 
     def _on_volume(self, value: str) -> None:
-        if not self._ui_ready or self._closed:
+        if not self._ui_ready or self._closed or self._syncing_volume:
             return
         try:
             volume = clamp_volume(float(value) / 100.0)
@@ -255,7 +274,8 @@ class SuitOWindow:
         if not self._dragging_volume:
             percent = round(shot.volume * 100)
             if abs(float(self.volume.get()) - percent) >= 1:
-                self.volume.set(percent)
+                with self._hold_volume():
+                    self.volume.set(percent)
                 self._paint_volume_caption(shot.volume)
         self._append_activity(shot.activity)
 
@@ -266,6 +286,9 @@ class SuitOWindow:
 
     def _paint_volume_caption(self, volume: float) -> None:
         self.volume_caption.configure(text=f"{int(round(volume * 100))}%")
+        panel = getattr(self, "voice_panel", None)
+        if panel is not None:
+            panel.paint_volume(volume)
 
     def _append_activity(self, entries: tuple) -> None:
         fresh = [entry for entry in entries if entry.seq > self._last_activity_seq]
@@ -289,3 +312,11 @@ class SuitOWindow:
         if not delta:
             return
         self.log.yview_scroll(int(-delta / 120) or (-1 if delta > 0 else 1), "units")
+
+    @contextmanager
+    def _hold_volume(self):
+        self._syncing_volume = True
+        try:
+            yield
+        finally:
+            self._syncing_volume = False

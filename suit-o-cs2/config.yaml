@@ -9,12 +9,20 @@ server:
 speech:
   # pyttsx3 (Windows SAPI), stub (tests / simulator), or remote (not implemented).
   backend: pyttsx3
-  # Substring of an installed SAPI voice name. Blank uses the engine default.
+  # Substring of an installed voice name. Blank uses the engine default.
+  # A future remote or cloned voice can use this same name.
   voice: ""
-  # Words per minute.
+  # Words per minute. Every speech backend is asked to honor this.
   rate: 185
   # 0.0 to 1.0. This is Suit-O's volume, not the game's.
   volume: 0.85
+  # Pitch offset from -10 (lower) to 10 (higher). 0 keeps the voice's own pitch.
+  # Not SAPI-specific; pyttsx3 maps it onto SAPI pitch markup per line.
+  pitch: 0
+  # Milliseconds of silence before each line. 0 means no extra pause.
+  pause_ms: 0
+  # none, mild, or strong. Quoted so it stays a string. Strong also lifts pitch a little.
+  emphasis: "none"
   # Playback device name substring. Blank uses the Windows default playback
   # device (set your headset as the default output if you want Suit-O there).
   # Do not set a microphone, stereo mix, or virtual cable into voice chat.

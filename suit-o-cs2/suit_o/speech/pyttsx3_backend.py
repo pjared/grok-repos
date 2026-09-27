@@ -20,6 +20,13 @@ from suit_o.speech.devices import (
     match_voice,
     matching_playback_devices,
 )
+from suit_o.speech.tuning import (
+    SAPI_SPEAK_ASYNC,
+    SAPI_SPEAK_XML,
+    VoiceTuning,
+    normalize_tuning,
+    prepare_utterance,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,13 +39,32 @@ class Pyttsx3Backend(SpeechBackend):
         self._ready = False
         self._device_applied = False
 
-    def speak(self, text: str) -> bool:
+    def speak(self, text: str, tuning: VoiceTuning | None = None) -> bool:
+        previous = None
+        if tuning is not None:
+            previous = self._snapshot_tuning()
+            self.apply_tuning(tuning)
+        try:
+            return self._speak_current(text)
+        finally:
+            if previous is not None:
+                self.apply_tuning(previous)
+
+    def _speak_current(self, text: str) -> bool:
         self._ensure_engine()
         if self._cancel.is_set():
             self._cancel.clear()
             return False
         assert self._engine is not None
-        self._engine.say(text)
+        spoken, uses_xml = prepare_utterance(text, self._snapshot_tuning())
+        if not spoken:
+            cancelled = self._cancel.is_set()
+            self._cancel.clear()
+            return not cancelled
+        say_text = spoken
+        if uses_xml and not _arm_sapi_xml(self._engine):
+            say_text = text.strip()
+        self._engine.say(say_text)
         self._engine.runAndWait()
         cancelled = self._cancel.is_set()
         self._cancel.clear()
@@ -57,6 +83,32 @@ class Pyttsx3Backend(SpeechBackend):
     def close(self) -> None:
         self.stop()
         self._discard_engine()
+
+    def apply_tuning(self, tuning: object) -> None:
+        """Store rate, volume, pitch, pause, and emphasis, and select the voice.
+
+        Pitch, pause, and emphasis are applied on the next ``speak`` with SAPI
+        XML. pyttsx3's pitch property does not change a SAPI voice. Changing
+        the voice discards the engine so the next line builds it again and
+        then puts the rate back.
+        """
+
+        applied = normalize_tuning(tuning)  # type: ignore[arg-type]
+        voice_changed = applied.voice != self._settings.voice
+        self._settings.voice = applied.voice
+        self._settings.rate = applied.rate
+        self._settings.volume = applied.volume
+        self._settings.pitch = applied.pitch
+        self._settings.pause_ms = applied.pause_ms
+        self._settings.emphasis = applied.emphasis
+        if voice_changed and self._engine is not None:
+            self._discard_engine()
+            return
+        engine = self._engine
+        if engine is None:
+            return
+        engine.setProperty("rate", self._settings.rate)  # type: ignore[attr-defined]
+        engine.setProperty("volume", self._settings.volume)  # type: ignore[attr-defined]
 
     def set_volume(self, volume: float) -> None:
         """Store the volume and apply it if the engine already exists.
@@ -96,6 +148,9 @@ class Pyttsx3Backend(SpeechBackend):
         if self._engine is not None:
             self._discard_engine()
 
+    def _snapshot_tuning(self) -> VoiceTuning:
+        return _snapshot_from(self._settings)
+
     def _ensure_engine(self) -> None:
         if self._ready:
             return
@@ -118,6 +173,8 @@ class Pyttsx3Backend(SpeechBackend):
         engine.setProperty("volume", self._settings.volume)
         try:
             self._apply_voice(engine)
+            # Some engines reset rate when the voice changes.
+            engine.setProperty("rate", self._settings.rate)
             self._apply_output_device(engine)
         except Exception:
             try:
@@ -220,6 +277,60 @@ class Pyttsx3Backend(SpeechBackend):
             )
         tts.AudioOutput = token
         logger.info("Speech output device: %s", description or query)
+
+
+def _snapshot_from(settings: SpeechConfig) -> VoiceTuning:
+    return VoiceTuning(
+        voice=settings.voice,
+        rate=settings.rate,
+        volume=settings.volume,
+        pitch=settings.pitch,
+        pause_ms=settings.pause_ms,
+        emphasis=settings.emphasis,
+    )
+
+
+def install_sapi_xml_speak(driver: object) -> None:
+    """Speak the next flagged line as SAPI XML, then go back to plain text.
+
+    pyttsx3 calls ``Speak`` with the async flag only. Pitch, silence, and
+    emphasis need the XML flag as well. The flag is one utterance so a later
+    plain line is not parsed as markup.
+    """
+
+    if getattr(driver, "_suito_xml_wrapped", False):
+        return
+    original = driver.say
+
+    def say(text: str) -> None:
+        if not getattr(driver, "_suito_use_xml", False):
+            original(text)
+            return
+        driver._suito_use_xml = False  # type: ignore[attr-defined]
+        driver._proxy.setBusy(True)  # type: ignore[attr-defined]
+        driver._proxy.notify("started-utterance")  # type: ignore[attr-defined]
+        driver._speaking = True  # type: ignore[attr-defined]
+        driver._current_text = text  # type: ignore[attr-defined]
+        driver._tts.Speak(str(text), SAPI_SPEAK_ASYNC | SAPI_SPEAK_XML)  # type: ignore[attr-defined]
+
+    driver.say = say  # type: ignore[method-assign]
+    driver._suito_xml_wrapped = True  # type: ignore[attr-defined]
+
+
+def _arm_sapi_xml(engine: object) -> bool:
+    """Ask the SAPI driver to parse the next ``say`` as XML. False if it cannot."""
+
+    driver = _sapi_driver(engine)
+    if driver is None or getattr(driver, "_tts", None) is None:
+        return False
+    install_sapi_xml_speak(driver)
+    driver._suito_use_xml = True  # type: ignore[attr-defined]
+    return True
+
+
+def _sapi_driver(engine: object):
+    proxy = getattr(engine, "proxy", None)
+    return getattr(proxy, "_driver", None)
 
 
 def _sapi_voice(engine: object):

@@ -15,17 +15,20 @@ from suit_o.config import ConfigError, is_disallowed_output_device
 from suit_o.models import Utterance
 from suit_o.preferences import clamp_volume
 from suit_o.speech.backend import SpeechBackend
+from suit_o.speech.tuning import VoiceTuning, normalize_tuning
 
 logger = logging.getLogger(__name__)
 
 _MAX_PENDING = 8
 _NO_DEVICE = object()
+_NO_TUNING = object()
 
 
 @dataclass
 class _Job:
     utterance: Utterance
     bypass_mute: bool = False
+    tuning: VoiceTuning | None = None
 
 
 class SpeechService:
@@ -40,6 +43,7 @@ class SpeechService:
         self._stop = False
         self._queued_volume: float | None = None
         self._queued_device: object = _NO_DEVICE
+        self._queued_tuning: object = _NO_TUNING
         self._applying = False
         self._cv = threading.Condition()
         self._thread = threading.Thread(target=self._loop, name="suit-o-speech", daemon=True)
@@ -51,11 +55,18 @@ class SpeechService:
         self._started = True
         self._thread.start()
 
-    def submit(self, utterance: Utterance, *, bypass_mute: bool = False) -> None:
+    def submit(
+        self,
+        utterance: Utterance,
+        *,
+        bypass_mute: bool = False,
+        tuning: VoiceTuning | None = None,
+    ) -> None:
         with self._cv:
             if self._stop or (self._muted and not bypass_mute):
                 return
-            self._pending.append(_Job(utterance, bypass_mute))
+            override = None if tuning is None else normalize_tuning(tuning)
+            self._pending.append(_Job(utterance, bypass_mute, override))
             self._pending.sort(key=lambda item: -item.utterance.priority)
             if len(self._pending) > _MAX_PENDING:
                 dropped = self._pending[_MAX_PENDING :]
@@ -76,6 +87,16 @@ class SpeechService:
         volume_f = clamp_volume(volume)
         with self._cv:
             self._queued_volume = volume_f
+            if self._queued_tuning is not _NO_TUNING:
+                pending = self._queued_tuning
+                self._queued_tuning = VoiceTuning(
+                    voice=pending.voice,
+                    rate=pending.rate,
+                    volume=volume_f,
+                    pitch=pending.pitch,
+                    pause_ms=pending.pause_ms,
+                    emphasis=pending.emphasis,
+                )
             self._cv.notify()
 
     def set_output_device(self, name: str) -> None:
@@ -91,6 +112,34 @@ class SpeechService:
         with self._cv:
             self._queued_device = cleaned
             self._cv.notify()
+
+    def apply_tuning(self, tuning: VoiceTuning) -> None:
+        """Queue voice, rate, pitch, pause, emphasis, and volume.
+
+        Applied on the speech thread before the next line. Pitch and pause
+        stay on the tuning object; each backend decides how to render them.
+        """
+
+        applied = normalize_tuning(tuning)
+        with self._cv:
+            self._queued_tuning = applied
+            self._cv.notify()
+
+    def preview(self, text: str, tuning: VoiceTuning | None = None) -> None:
+        """Speak ``text`` now, even while muted, with an optional one-line tuning.
+
+        The override is not stored. The next in-game line uses the last
+        ``apply_tuning`` (or the backend's original settings).
+        """
+
+        cleaned = text.strip()
+        if not cleaned:
+            raise ValueError("Preview needs a line to speak")
+        self.submit(
+            Utterance(event_type="preview", text=cleaned, priority=100),
+            bypass_mute=True,
+            tuning=tuning,
+        )
 
     def set_muted(self, muted: bool) -> None:
         with self._cv:
@@ -136,7 +185,11 @@ class SpeechService:
         self.backend.close()
 
     def _has_controls(self) -> bool:
-        return self._queued_volume is not None or self._queued_device is not _NO_DEVICE
+        return (
+            self._queued_volume is not None
+            or self._queued_device is not _NO_DEVICE
+            or self._queued_tuning is not _NO_TUNING
+        )
 
     def _loop(self) -> None:
         while True:
@@ -147,9 +200,13 @@ class SpeechService:
                     return
                 volume = self._queued_volume
                 device = self._queued_device
+                tuning = self._queued_tuning
                 self._queued_volume = None
                 self._queued_device = _NO_DEVICE
-                self._applying = volume is not None or device is not _NO_DEVICE
+                self._queued_tuning = _NO_TUNING
+                self._applying = (
+                    volume is not None or device is not _NO_DEVICE or tuning is not _NO_TUNING
+                )
                 job: _Job | None = None
                 if self._pending:
                     job = self._pending.pop(0)
@@ -159,7 +216,7 @@ class SpeechService:
                         self._current = job.utterance
                         self._current_bypass = job.bypass_mute
             try:
-                self._apply_controls(volume, device)
+                self._apply_controls(volume, device, tuning)
             finally:
                 with self._cv:
                     self._applying = False
@@ -168,7 +225,10 @@ class SpeechService:
                 continue
             completed = False
             try:
-                completed = bool(self.backend.speak(job.utterance.text))
+                if job.tuning is None:
+                    completed = bool(self.backend.speak(job.utterance.text))
+                else:
+                    completed = bool(self.backend.speak(job.utterance.text, tuning=job.tuning))
             except Exception:
                 logger.exception("Speech backend failed")
             with self._cv:
@@ -178,17 +238,22 @@ class SpeechService:
                 self._current_bypass = False
                 self._cv.notify_all()
 
-    def _apply_controls(self, volume: float | None, device: object) -> None:
-        if volume is not None:
-            try:
-                self.backend.set_volume(volume)
-            except Exception:
-                logger.exception("Could not apply speech volume")
+    def _apply_controls(self, volume: float | None, device: object, tuning: object) -> None:
         if device is not _NO_DEVICE:
             try:
                 self.backend.set_output_device(str(device))
             except Exception:
                 logger.exception("Could not apply the speech output device")
+        if tuning is not _NO_TUNING:
+            try:
+                self.backend.apply_tuning(tuning)
+            except Exception:
+                logger.exception("Could not apply voice tuning")
+        if volume is not None:
+            try:
+                self.backend.set_volume(volume)
+            except Exception:
+                logger.exception("Could not apply speech volume")
 
 
 def _now() -> float:

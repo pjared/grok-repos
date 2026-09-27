@@ -36,3 +36,13 @@ class SpeechBackend:
         """
 
         return None
+
+    def apply_tuning(self, tuning: object) -> None:
+        """Store voice, rate, volume, pitch, pause, and emphasis.
+
+        Called on the speech thread. The fields are backend-agnostic.
+        Implementations that cannot change pitch directly should apply it
+        when they speak, not by ignoring the setting.
+        """
+
+        return None

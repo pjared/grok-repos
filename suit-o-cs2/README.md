@@ -61,9 +61,11 @@ These steps assume Windows 10 or 11 and the default Steam library path. If CS2 i
    python -m suit_o.gui
    ```
 
-   `Start Suit-O GUI.bat` does the same thing with `pythonw`. The window shows whether the listener is up and how long it has been since CS2 last sent game state. Mute, volume, and the output device are saved back to `config.yaml`.
+   `Start Suit-O GUI.bat` does the same thing with `pythonw`. The window has two tabs.
 
-   Pick the playback device you actually want to hear. The list is Windows' speech outputs (SAPI), for example speakers, a headset earphone, a digital output, or a monitor. A headset often shows up twice — once for game audio and once for chat — and the Windows default is not always the one that makes a sound. Choose the endpoint, then press **Test voice**. Microphones are not listed, and Suit-O still refuses a microphone or virtual-cable name if one is typed into `speech.output_device`.
+   **Listener.** Shows whether the listener is up and how long it has been since CS2 last sent game state. Mute, volume, and the output device are saved back to `config.yaml`. Pick the playback device you actually want to hear. The list is Windows' speech outputs (SAPI), for example speakers, a headset earphone, a digital output, or a monitor. A headset often shows up twice — once for game audio and once for chat — and the Windows default is not always the one that makes a sound. Choose the endpoint, then press **Test voice**. Microphones are not listed, and Suit-O still refuses a microphone or virtual-cable name if one is typed into `speech.output_device`.
+
+   **Voice.** Fine-tune the voice used for every in-game line. The picker lists installed Windows SAPI voices (blank in the config, shown as "Engine default", keeps the engine's own voice). Sliders set speaking rate (words per minute), pitch (-10 to 10), volume (the same slider as on the Listener tab), and an optional pause before each line (milliseconds). Emphasis is None, Mild, or Strong. **Preview** speaks the text box through the output device selected on the Listener tab, including slider positions you have not saved yet. **Save** writes the settings and uses them for every in-game line. **Reset to defaults** puts back rate 185, pitch 0, volume 0.85, no pause, no emphasis, and the engine default voice, and saves that immediately. Closing the window saves the last saved tuning, not an unsaved draft. Volume is the exception: moving either volume slider saves it.
 
 7. The console listener still works if you want a terminal instead of the window. Double-click `Start Suit-O.bat`, or:
 
@@ -73,11 +75,16 @@ These steps assume Windows 10 or 11 and the default Steam library path. If CS2 i
 
    The log line `GSI endpoint ready at http://127.0.0.1:3000/` means it is waiting. Join a match. On a new round you should see a line in the log and hear it. Leaving `speech.output_device` blank uses the Windows default playback device. To target one device by name, set `output_device` to part of its playback name, such as `Headphones`. Use the speaker or headphone name, not the microphone name.
 
-Optional voice settings in `config.yaml`:
+Optional voice settings in `config.yaml`. These six are not tied to SAPI, so a future custom or cloned voice (a remote TTS server) can reuse the same panel and the same keys:
 
-- `speech.voice`: part of an installed voice name (`David`, `Zira`, ...). Blank keeps the default SAPI voice. These are the voices Windows already has. Suit-O does not clone a person's voice.
-- `speech.rate`: words per minute (default 185).
-- `speech.volume`: `0.0` to `1.0`.
+- `speech.voice`: part of an installed voice name (`David`, `Zira`, ...). Blank keeps the engine default. These are the voices Windows already has. Suit-O does not clone a person's voice.
+- `speech.rate`: words per minute, 80 to 400 (default 185).
+- `speech.volume`: `0.0` to `1.0` (default `0.85`).
+- `speech.pitch`: integer from `-10` to `10` (default `0`, the voice's own pitch). pyttsx3 cannot set SAPI pitch on its own, so Suit-O wraps each affected line in SAPI XML such as `<pitch absmiddle="2">`. Plain lines stay plain text.
+- `speech.pause_ms`: milliseconds of silence before a line, `0` to `1000` (default `0`). Spoken with SAPI `<silence msec="..."/>` when it is not zero.
+- `speech.emphasis`: `none`, `mild`, or `strong` (default `none`). Mild and strong use SAPI `<emph>`. Strong also raises pitch by 3 for that line only, still inside `-10` to `10`.
+
+`speech.backend: remote` is still refused at startup. The fields above are already the contract that backend would read.
 
 ## Mute
 
@@ -120,7 +127,7 @@ A broke freeze (under rifle-plus-helmet money: 4100 on CT, 3700 on T) uses the l
 
 ## Remote speech later
 
-`speech.backend: remote` is reserved for an HTTP TTS server on the home LAN (the machine in mind is a DGX Spark). Selecting it stops startup with an error. v1 contains no client for that server. When it exists, playback still has to be a local headset or speakers, still not voice chat.
+`speech.backend: remote` is reserved for an HTTP TTS server on the home LAN (the machine in mind is a DGX Spark). Selecting it stops startup with an error. v1 contains no client for that server. When it exists, it should honor `speech.voice`, `speech.rate`, `speech.volume`, `speech.pitch`, `speech.pause_ms`, and `speech.emphasis`, and playback still has to be a local headset or speakers, still not voice chat.
 
 ## Troubleshooting
 
@@ -128,7 +135,9 @@ A broke freeze (under rifle-plus-helmet money: 4100 on CT, 3700 on T) uses the l
 
 **Port already in use.** Change `server.port` and the `uri` in the cfg to the same new port, then restart both Suit-O and CS2.
 
-**You hear nothing, but the log shows lines.** Check mute, the volume slider, and the output device. Press **Test voice** after choosing a playback device. A wireless headset can expose two outputs (game and chat) plus a microphone; pick a playback name, not the microphone. The Windows default is sometimes a different endpoint than the one you are wearing.
+**You hear nothing, but the log shows lines.** Check mute, the volume slider, and the output device. Press **Test voice** after choosing a playback device. On the Voice tab, **Preview** speaks the text box on that same device. A wireless headset can expose two outputs (game and chat) plus a microphone; pick a playback name, not the microphone. The Windows default is sometimes a different endpoint than the one you are wearing.
+
+**It does not sound like Suit-O yet.** Open the Voice tab, try a different installed voice, and move rate and pitch. Press **Preview** before **Save**. Reset to defaults puts the stock knobs back and saves them. Pitch, pause, and emphasis are applied to each line; they are not a separate Windows voice.
 
 **The desktop window opens and closes immediately.** Read `suit-o.log` in this folder. `pythonw` has no console, so startup errors are written there. A missing virtual environment is reported by the launcher itself.
 

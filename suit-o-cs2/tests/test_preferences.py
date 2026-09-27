@@ -113,6 +113,49 @@ def test_save_refuses_a_microphone_and_leaves_the_file(tmp_path: Path):
     assert path.read_bytes() == before
 
 
+def test_save_voice_tuning_round_trips_and_preserves_comments(tmp_path: Path):
+    path = _copy_config(tmp_path)
+    save_user_settings(
+        path,
+        voice="Microsoft Zira Desktop",
+        rate=160,
+        pitch=-3,
+        pause_ms=120,
+        emphasis="strong",
+    )
+    text = path.read_text(encoding="utf-8")
+    assert "Words per minute" in text
+    assert "Do not set a microphone" in text
+    assert "Pitch offset" in text
+    loaded = load_config(path)
+    assert loaded.speech.voice == "Microsoft Zira Desktop"
+    assert loaded.speech.rate == 160
+    assert loaded.speech.pitch == -3
+    assert loaded.speech.pause_ms == 120
+    assert loaded.speech.emphasis == "strong"
+    assert loaded.speech.volume == 0.85
+    assert loaded.server.port == 3000
+
+    before = path.read_bytes()
+    try:
+        save_user_settings(path, pitch=40)
+        refused = False
+    except ConfigError as exc:
+        refused = True
+        assert "pitch" in str(exc)
+    assert refused
+    assert path.read_bytes() == before
+
+    try:
+        save_user_settings(path, emphasis="loud")
+        refused_emphasis = False
+    except ConfigError as exc:
+        refused_emphasis = True
+        assert "emphasis" in str(exc)
+    assert refused_emphasis
+    assert path.read_bytes() == before
+
+
 def test_save_inserts_a_missing_key_and_preserves_crlf(tmp_path: Path):
     path = _copy_config(tmp_path)
     lines = path.read_text(encoding="utf-8").splitlines()
