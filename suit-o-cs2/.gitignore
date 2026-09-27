@@ -15,4 +15,3 @@ config.local.yaml
 .suit-o-restart.json
 lineup-data/**
 !lineup-data/.gitkeep
-logs/

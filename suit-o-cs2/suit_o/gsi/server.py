@@ -33,14 +33,12 @@ class GsiServer(ThreadingHTTPServer):
         queue: Queue,
         on_toggle_mute: Callable[[], bool],
         status: Callable[[], dict],
-        on_received: Callable[[], None] | None = None,
         on_rejected: Callable[[str], None] | None = None,
     ) -> None:
         self.token = token
         self.payload_queue = queue
         self.on_toggle_mute = on_toggle_mute
         self.status = status
-        self.on_received = on_received
         self.on_rejected = on_rejected
         super().__init__((host, port), GsiHandler)
 
@@ -94,7 +92,6 @@ class GsiHandler(BaseHTTPRequestHandler):
             logger.warning("Rejected GSI payload from %s: auth token mismatch", self.client_address[0])
             self._reject(401, b'{"error":"unauthorized"}', "bad token")
             return
-        self._received()
         try:
             self.server.payload_queue.put_nowait(data)
         except Full:
@@ -102,15 +99,6 @@ class GsiHandler(BaseHTTPRequestHandler):
             self._reject(200, b'{"ok":true}', "queue full")
             return
         self._reply(200, b'{"ok":true}')
-
-    def _received(self) -> None:
-        callback = self.server.on_received
-        if callback is None:
-            return
-        try:
-            callback()
-        except Exception:
-            logger.exception("Could not record a GSI payload")
 
     def _reject(self, code: int, body: bytes, reason: str) -> None:
         callback = self.server.on_rejected

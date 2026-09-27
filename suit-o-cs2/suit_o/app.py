@@ -36,7 +36,6 @@ from suit_o.speech.clone_backend import CloneSpeechBackend
 from suit_o.speech.factory import create_backend
 from suit_o.speech.pyttsx3_backend import Pyttsx3Backend
 from suit_o.speech.service import SpeechService
-from suit_o.speechlog import PayloadMinute, SpeechLog, SpeechLogEntry
 from suit_o.speech.tuning import (
     VoiceTuning,
     list_sapi_voice_names,
@@ -111,7 +110,6 @@ class SuitOApp:
         voices_dir: Path | None = None,
         lineups_dir: Path | None = None,
         pack_dir: Path | None = None,
-        speech_log_dir: Path | None = None,
         backend_factory: Callable[[SpeechConfig], SpeechBackend] | None = None,
     ) -> None:
         self.config = config
@@ -126,13 +124,6 @@ class SuitOApp:
         self.lineups.set_smokes_only(config.lineups.smokes_only)
         self._match_activity: str | None = None
         self._match_round: str | None = None
-        self._speech_map = ""
-        self._speech_round: int | None = None
-        self.speech_log = SpeechLog(
-            speech_log_dir or (PROJECT_ROOT / "logs"),
-            keep_days=config.logs.keep_days,
-            secrets=(config.server.token,),
-        )
         self._backend_factory = backend_factory or create_backend
         if not config.speech.voices_dir:
             config.speech.voices_dir = str(self.voices_dir)
@@ -188,7 +179,6 @@ class SuitOApp:
             self._queue,
             self.toggle_mute,
             self.status,
-            on_received=self._on_gsi_received,
             on_rejected=self._on_gsi_rejected,
         )
         self._http_thread = threading.Thread(
@@ -419,14 +409,14 @@ class SuitOApp:
                 emphasis=override.emphasis,
                 voices_dir=str(self.voices_dir),
             )
-            self._log_speech("preview", line, "spoken", voice=override.voice)
+            self._log_speech("preview", line, "spoken")
             preview_backend = self._backend_factory(preview_settings)
             if isinstance(preview_backend, CloneSpeechBackend):
                 preview_backend.allow_live_synthesis()
             self.speech.preview_with(line, override, preview_backend)
             return line
         override = None if tuning is None else self._resolve_tuning(tuning)
-        self._log_speech("preview", line, "spoken", voice=None if override is None else override.voice)
+        self._log_speech("preview", line, "spoken")
         self.speech.preview(line, override)
         return line
 
@@ -582,10 +572,6 @@ class SuitOApp:
             self._match_activity = own.activity
         if snapshot.round_present and snapshot.round_phase:
             self._match_round = snapshot.round_phase
-        if snapshot.map_present and snapshot.map_name:
-            self._speech_map = snapshot.map_name
-        if snapshot.round_present and snapshot.round_number is not None:
-            self._speech_round = snapshot.round_number
 
     def lineup_view(self) -> DeckView:
         """Current overlay card. Safe to call from the window thread."""
@@ -758,9 +744,6 @@ class SuitOApp:
             self.speech.apply_tuning(self.current_tuning())
             self.lineups.set_enabled(loaded.lineups.enabled)
             self.lineups.set_smokes_only(loaded.lineups.smokes_only)
-            self.speech_log.keep_days = loaded.logs.keep_days
-            self.speech_log.secrets = (loaded.server.token,)
-            self.speech_log.prune()
             tuning_changed = self.current_tuning() != previous_tuning
             backend_changed = (
                 loaded.speech.backend != previous_backend or loaded.speech.voice != previous_voice
@@ -843,9 +826,6 @@ class SuitOApp:
         self.speech.stop()
         if self._http_thread is not None:
             self._http_thread.join(timeout=2)
-        summary = self.speech_log.flush()
-        if summary is not None:
-            self._record_payload_minute(summary)
         for renderer in self._renderers:
             renderer.close()
         self._renderers.clear()
@@ -920,46 +900,24 @@ class SuitOApp:
 
         self._record(message)
 
-    def _on_gsi_received(self) -> None:
-        summary = self.speech_log.note_payload(time.time())
-        if summary is not None:
-            self._record_payload_minute(summary)
-
     def _on_gsi_rejected(self, reason: str) -> None:
-        self.speech_log.note_rejected(time.time(), reason)
         self._record(f"gsi: rejected ({reason})")
 
     def _on_speech_dropped(self, utterance: Utterance) -> None:
         self._log_speech(utterance.event_type, utterance.text, "queue full")
 
-    def _record_payload_minute(self, summary: PayloadMinute) -> None:
-        self._record(f"gsi: {summary.count} payload(s) from {summary.first} to {summary.last}")
+    def _log_speech(self, event: str, text: str, status: str) -> None:
+        """Show a spoken line, or why a detected event was not spoken."""
 
-    def _log_speech(self, event: str, text: str, status: str, *, voice: str | None = None) -> None:
-        """Remember a spoken line, or why a detected event was not spoken."""
-
-        chosen = self.config.speech.voice if voice is None else voice
-        label = chosen.strip() or "engine default"
-        try:
-            self.speech_log.append(
-                SpeechLogEntry(
-                    at=time.time(),
-                    event=event,
-                    text=text,
-                    status=status,
-                    map_name=self._speech_map,
-                    round_number=self._speech_round,
-                    voice=label,
-                )
-            )
-        except OSError:
-            logger.exception("Could not write the speech log")
         if status == "spoken":
             self._record(f"{event}: {text}")
         else:
-            self._record(f"{event}: skipped ({status.replace('-', ' ')})")
+            self._record(f"{event}: skipped ({status})")
 
     def _record(self, message: str) -> None:
+        token = self.config.server.token.strip()
+        if token:
+            message = message.replace(token, "[redacted]")
         with self._activity_lock:
             self._activity_seq += 1
             self._activity.append(Activity(self._activity_seq, time.time(), message))

@@ -190,7 +190,7 @@ Use the CS2 map id, such as `de_dust2` or `de_mirage`. A short folder name (`dus
 
 ## Speech log
 
-Every detected game event is written to the Listener tab with a local time (`HH:MM:SS`), and appended to a daily file in `logs/` (`speech-YYYY-MM-DD.jsonl`). A spoken line includes the words. When Suit-O stays quiet, the row says why: `no matching line`, `cooldown`, `muted`, `lower priority`, or `queue full`. Each of those rows has the event, the map and round number when CS2 has sent them, and the voice name (or `engine default`). Accepted game-state posts are counted per minute (how many, and the first and last time), so a minute with no row means CS2 sent nothing. A refused post, including a bad token, is one row with the reason and not the token or the raw body. **Open log folder** opens `logs/`. **Copy** puts the lines currently in the window on the clipboard. Daily files are kept for 14 days (`logs.keep_days`). The folder is gitignored. The auth token is stripped if it ever appears in a field.
+The Listener tab keeps a scrolling log in memory (the newest 200 lines). Each line starts with the local time (`HH:MM:SS`). Spoken lines show the event and the words. A detected event with no line shows the event and why: `no matching line`, `cooldown`, `muted`, `lower priority`, or `queue full`. A refused game-state post, including a bad token, is one line with the reason and not the token or the raw body. **Copy** puts the lines currently on screen onto the clipboard. Nothing from this log is written to a file. If the auth token appears in a message, it is replaced with `[redacted]`.
 
 ## Updates without closing the window
 

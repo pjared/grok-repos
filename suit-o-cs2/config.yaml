@@ -104,7 +104,3 @@ lineups:
   hotkey_toggle: "ctrl+shift+h"
 
 lines_file: lines/lines.yaml
-
-logs:
-  # Daily files in logs/ (gitignored). A file is removed once it is this many days old.
-  keep_days: 14

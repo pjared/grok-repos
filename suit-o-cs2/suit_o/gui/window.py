@@ -29,7 +29,6 @@ from suit_o.reload import (
     gui_restart_argv,
     write_restart_state,
 )
-from suit_o.speechlog import open_log_folder
 from suit_o.update import install_requirements, run_git_update
 from suit_o.gui.status import (
     device_menu_labels,
@@ -205,9 +204,6 @@ class SuitOWindow:
         log_tools.grid(row=2, column=0, columnspan=4, sticky="ew", pady=(10, 4))
         ttk.Label(log_tools, text="Recent events").pack(side="left")
         ttk.Button(log_tools, text="Copy", command=self._copy_log).pack(side="right")
-        ttk.Button(log_tools, text="Open log folder", command=self._open_log_folder).pack(
-            side="right", padx=(0, 6)
-        )
 
         log_frame = ttk.Frame(frame)
         log_frame.grid(row=9, column=0, columnspan=3, sticky="nsew")
@@ -593,12 +589,6 @@ class SuitOWindow:
         panel = getattr(self, "voice_panel", None)
         if panel is not None:
             panel.paint_volume(volume)
-
-    def _open_log_folder(self) -> None:
-        try:
-            open_log_folder(self.app.speech_log.directory)
-        except OSError as exc:
-            messagebox.showerror("Suit-O", f"Could not open the log folder.\n{exc}")
 
     def _copy_log(self) -> None:
         text = self.log.get("1.0", "end-1c")
