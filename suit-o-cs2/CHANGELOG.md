@@ -12,7 +12,7 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ### Fixed
 
-- Update reports an error when the checkout is not the commit whose tests were checked.
+- Update reports an error when the checkout is not the commit whose tests were checked. (`234fdb1`)
 
 ## [0.19.8] - 2026-09-27
 
