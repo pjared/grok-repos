@@ -1,5 +1,7 @@
 -r requirements.txt
 pytest>=8.0
+# Windows Python has no system zoneinfo. The release step dates versions in Pacific time.
+tzdata>=2024.1
 # The silence slicer is numpy. The Windows pytest workflow installs this file
 # and does not install requirements-voice.txt or requirements-clips.txt.
 numpy>=1.26

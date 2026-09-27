@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import tkinter as tk
 from pathlib import Path
 
 import pytest
@@ -18,6 +17,7 @@ from suit_o.changelog import (
 )
 from suit_o.gui.news import WhatsNew
 from suit_o.version import PACKAGE_ROOT, read_version, write_version
+from tkutil import open_tk_or_skip
 
 _SAMPLE = """\
 # Changelog
@@ -142,8 +142,7 @@ def test_write_version_replaces_only_the_version_line():
 
 
 def test_whats_new_panel_shows_the_added_section():
-    root = tk.Tk()
-    root.withdraw()
+    root = open_tk_or_skip()
     try:
         notes = [ReleaseNotes("0.18.0", "2026-09-27", {"Added": ("The window shows the version.",)})]
         panel = WhatsNew(root, "What's new", notes)

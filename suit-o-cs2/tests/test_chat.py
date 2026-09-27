@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import tkinter as tk
 from tkinter import ttk
+
+from tkutil import open_tk_or_skip
 
 from suit_o.app import SuitOApp
 from suit_o.chat.availability import chat_is_paused
@@ -235,8 +236,7 @@ def test_chat_panel_streams_text_and_pauses(tmp_path: Path):
         yield "Hi. "
         yield "Sorry!"
 
-    root = tk.Tk()
-    root.withdraw()
+    root = open_tk_or_skip()
     try:
         app = _App()
         panel = ChatPanel(
@@ -356,8 +356,7 @@ def test_chat_panel_shows_the_vram_note_and_releases_after_idle():
         def interrupt_chat(self) -> None:
             return None
 
-    root = tk.Tk()
-    root.withdraw()
+    root = open_tk_or_skip()
     try:
         panel = ChatPanel(
             ttk.Frame(root),
@@ -430,8 +429,7 @@ def test_chat_ptt_key_is_saved_locally_and_the_panel_warns(tmp_path: Path, monke
     app.config = _Config()
 
     monkeypatch.setattr("suit_o.gui.chat.whisper_available", lambda: False)
-    root = tk.Tk()
-    root.withdraw()
+    root = open_tk_or_skip()
     try:
         panel = ChatPanel(
             ttk.Frame(root),

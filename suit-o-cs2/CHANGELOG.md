@@ -6,9 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Dates are Pacific Time. Each entry lists the short commit hash.
 
-New notes go under `## [Unreleased]`. Every push to `main` updates this file in that same commit. After the Suit-O tests pass on `main`, a release step moves Unreleased into `## [x.y.z] - YYYY-MM-DD`, writes that version into `pyproject.toml`, and tags `suit-o-vX.Y.Z`. It skips the cut when Unreleased is empty. The Update button only pulls a tested build. It does not commit or tag.
+New notes go under `## [Unreleased]`. Do not add a heading for today's date. Every push to `main` updates this file in that same commit. After the Suit-O tests pass on `main`, a release step moves Unreleased into `## [x.y.z] - YYYY-MM-DD`, writes that version into `pyproject.toml`, and tags `suit-o-vX.Y.Z`. Dated version headings are created only by that release step. It skips the cut when Unreleased is empty. The Update button only fast-forwards to the commit whose `suit-o-tests.yml` run passed. It does not commit or tag.
 
 ## [Unreleased]
+
+### Fixed
+
+- A test that opens a Tk window skips itself when Tcl cannot create one, including a GitHub runner with no display.
+- Startup closes a leftover log handler before it deletes `suit-o.log`, so Windows can remove the file.
+- The Windows test run installs `tzdata` so the release step can date a version in Pacific time.
 
 ### Changed
 
@@ -117,7 +123,7 @@ New notes go under `## [Unreleased]`. Every push to `main` updates this file in 
 
 ### Added
 
-- Lineup packs you keep on this PC, and an Update button that pulls `main` only after the Suit-O tests for that commit have passed. (`7fd25ea`)
+- Lineup packs you keep on this PC, and an Update button that runs `git pull --ff-only` when a GitHub check named pytest looks successful. That pull can still include a newer commit than the one the check covered. (`7fd25ea`)
 
 ## [0.7.1] - 2026-09-27
 

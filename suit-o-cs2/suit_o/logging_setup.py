@@ -16,12 +16,43 @@ def log_path(root: Path | None = None) -> Path:
 
 
 def discard_log_file(root: Path | None = None) -> None:
-    """Delete a leftover ``suit-o.log`` once. Missing is fine."""
+    """Delete a leftover ``suit-o.log`` once. Missing is fine.
 
+    A handler still attached to that file is closed first. Windows will not
+    delete a file another handle in this process has open.
+    """
+
+    path = log_path(root)
+    _release_log_handlers(path)
     try:
-        log_path(root).unlink(missing_ok=True)
+        path.unlink(missing_ok=True)
     except OSError:
         return
+
+
+def _release_log_handlers(path: Path) -> None:
+    logger = logging.getLogger()
+    for handler in list(logger.handlers):
+        if not isinstance(handler, logging.FileHandler):
+            continue
+        base = getattr(handler, "baseFilename", "")
+        if not base or not _same_log(Path(base), path):
+            continue
+        logger.removeHandler(handler)
+        try:
+            handler.flush()
+            handler.close()
+        except OSError:
+            pass
+
+
+def _same_log(candidate: Path, path: Path) -> bool:
+    if candidate.name != LOG_NAME and path.name != LOG_NAME:
+        return False
+    try:
+        return candidate.resolve() == path.resolve()
+    except OSError:
+        return candidate.name == path.name == LOG_NAME
 
 
 def configure_logging(root: Path | None = None) -> None:

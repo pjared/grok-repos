@@ -486,11 +486,11 @@ def test_unknown_fields_are_kept_and_logged_once(tmp_path: Path):
 
 
 def test_detail_view_shows_notes_and_the_source_link(tmp_path: Path):
-    import tkinter as tk
     from tkinter import ttk
 
     from suit_o.config import LineupConfig
     from suit_o.gui.lineups import LineupsPanel
+    from tkutil import open_tk_or_skip
 
     source = tmp_path / "pack"
     _png(source / "images" / "window-stand.png")
@@ -530,8 +530,7 @@ def test_detail_view_shows_notes_and_the_source_link(tmp_path: Path):
         def note(self, message: str) -> None:
             self.messages.append(message)
 
-    root = tk.Tk()
-    root.withdraw()
+    root = open_tk_or_skip()
     try:
         app = _App()
         panel = LineupsPanel(ttk.Frame(root), app, on_saved=lambda: None)

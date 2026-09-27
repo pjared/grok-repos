@@ -365,10 +365,10 @@ def test_broken_torch_does_not_count_as_installed(monkeypatch):
 
 
 def test_training_record_and_build_stay_grey_without_the_voice_stack(tmp_path: Path, monkeypatch):
-    import tkinter as tk
     from tkinter import ttk
 
     from suit_o.gui.training import TrainingPanel
+    from tkutil import open_tk_or_skip
 
     monkeypatch.setattr(
         "suit_o.gui.training.runtime_status",
@@ -380,8 +380,7 @@ def test_training_record_and_build_stay_grey_without_the_voice_stack(tmp_path: P
             self.voices_dir = tmp_path / "voices"
             self.config_path = None
 
-    root = tk.Tk()
-    root.withdraw()
+    root = open_tk_or_skip()
     try:
         panel = TrainingPanel(
             ttk.Frame(root),

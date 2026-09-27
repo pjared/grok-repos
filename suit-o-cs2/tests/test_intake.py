@@ -5,8 +5,9 @@ from __future__ import annotations
 import wave
 from pathlib import Path
 
-import tkinter as tk
 from tkinter import ttk
+
+from tkutil import open_tk_or_skip
 
 from suit_o.gui.drops import parse_dropped_files
 from suit_o.gui.training import CONSENT, TrainingPanel
@@ -112,8 +113,7 @@ def test_dropped_paths_keep_spaces_and_the_training_tab_imports_them(tmp_path: P
         def __init__(self) -> None:
             self.voices_dir = tmp_path / "voices"
 
-    root = tk.Tk()
-    root.withdraw()
+    root = open_tk_or_skip()
     try:
         panel = TrainingPanel(
             ttk.Frame(root),
@@ -197,8 +197,7 @@ def test_training_cleanup_checks_use_the_clips_passes(tmp_path: Path, monkeypatc
             self.voices_dir = tmp_path / "voices"
             self.config_path = None
 
-    root = tk.Tk()
-    root.withdraw()
+    root = open_tk_or_skip()
     try:
         panel = TrainingPanel(
             ttk.Frame(root),
