@@ -86,6 +86,26 @@ def load_chat_settings(config_path: Path | None = None) -> ChatSettings:
     )
 
 
+def release_model(settings: ChatSettings, *, post: Post | None = None) -> bool:
+    """Ask Ollama to drop the model from memory. A remote endpoint has nothing local to free.
+
+    ``post`` is the same test double as ``stream_reply``. The body has no API key.
+    """
+
+    if settings.backend != "ollama":
+        return False
+    sender = post or _http_lines
+    url = settings.ollama_url.rstrip("/") + "/api/generate"
+    payload = {"model": settings.model, "prompt": " ", "keep_alive": 0}
+    try:
+        lines = sender(url, payload, {})
+        for _line in lines:
+            break
+    except OSError:
+        return False
+    return True
+
+
 def stream_reply(
     settings: ChatSettings,
     messages: list[dict],

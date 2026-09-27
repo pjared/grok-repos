@@ -7,20 +7,23 @@ written to the event log or to a file.
 from __future__ import annotations
 
 import threading
+import time
 import tkinter as tk
 from collections.abc import Iterator
 from tkinter import ttk
 
 from suit_o.app import SuitOApp
-from suit_o.chat.llm import ChatError, load_chat_settings, stream_reply
+from suit_o.chat.idle import IdleRelease
+from suit_o.chat.llm import ChatError, load_chat_settings, release_model, stream_reply
 from suit_o.chat.session import PAUSED, ChatSession
 from suit_o.chat.stt import WHISPER_INSTALL, SttError, transcribe, whisper_available
 
 _HINT = (
-    "Talk to Suit-O between matches. He answers in the voice selected on the Voice tab, "
-    "through the output device on the Listener tab. A live round pauses chat so it does not "
-    "talk over in-game lines."
+    "Type to Suit-O. He answers in text and in the voice selected on the Voice tab "
+    "(a cloned voice, when that is the one selected), through the output device on the Listener tab. "
+    "A live round pauses chat. The menu, warmup, and the time between matches stay open."
 )
+VRAM_NOTE = "Live chat with CS2 open needs roughly 7 to 9 GB of VRAM."
 
 
 class ChatPanel:
@@ -32,19 +35,27 @@ class ChatPanel:
         schedule,
         threaded: bool = True,
         generate=None,
+        on_release=None,
     ) -> None:
         self.app = app
         self._schedule = schedule
         self._threaded = threaded
         self._generate_override = generate
+        self._on_release = on_release
         self.session = ChatSession()
+        self._idle = IdleRelease(self._release_resident)
         self._busy = False
         self._generation = 0
         self._worker: threading.Thread | None = None
 
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(1, weight=1)
-        ttk.Label(parent, text=_HINT, wraplength=820, justify="left").grid(row=0, column=0, sticky="ew")
+        header = ttk.Frame(parent)
+        header.grid(row=0, column=0, sticky="ew")
+        header.columnconfigure(0, weight=1)
+        ttk.Label(header, text=_HINT, wraplength=820, justify="left").grid(row=0, column=0, sticky="ew")
+        self.vram_note = ttk.Label(header, text=VRAM_NOTE, wraplength=820, justify="left")
+        self.vram_note.grid(row=1, column=0, sticky="ew", pady=(4, 0))
         self.history = tk.Text(parent, height=16, wrap="word", state="disabled")
         self.history.grid(row=1, column=0, sticky="nsew", pady=(8, 8))
 
@@ -97,6 +108,7 @@ class ChatPanel:
             self.sync_paused(True)
             return
         self.entry.delete(0, "end")
+        self._idle.touch(time.monotonic())
         self._append(f"You: {text}\n\nSuit-O: ")
         self._busy = True
         generation = self._generation
@@ -159,6 +171,25 @@ class ChatPanel:
         self.send_button.state(["!disabled"])
         self.entry.state(["!disabled"])
         self.status.configure(text="Cleared.")
+
+    def poll_idle(self, now: float | None = None) -> bool:
+        """Release a resident model after a quiet spell, or as soon as a round is live."""
+
+        moment = time.monotonic() if now is None else now
+        return self._idle.poll(
+            moment,
+            busy=self._busy or self._talking,
+            paused=self.app.match_is_live(),
+        )
+
+    def _release_resident(self) -> None:
+        if self._on_release is not None:
+            self._on_release()
+            return
+        try:
+            release_model(load_chat_settings(getattr(self.app, "config_path", None)))
+        except Exception:
+            return
 
     def fill_from_speech(self, samples: list[float], sample_rate: int) -> None:
         """Put a transcript in the box. Tests pass samples and a fake transcriber."""

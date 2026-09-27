@@ -9,6 +9,8 @@ import tkinter as tk
 from tkinter import ttk
 
 from suit_o.app import SuitOApp
+from suit_o.chat.availability import chat_is_paused
+from suit_o.chat.idle import IDLE_RELEASE_SECONDS, IdleRelease
 from suit_o.chat.llm import (
     DEFAULT_MODEL,
     DEFAULT_OLLAMA_URL,
@@ -17,13 +19,14 @@ from suit_o.chat.llm import (
     ChatError,
     ChatSettings,
     load_chat_settings,
+    release_model,
     stream_reply,
 )
 from suit_o.chat.persona import load_persona
 from suit_o.chat.session import PAUSED, ChatSession
 from suit_o.chat.stt import WHISPER_INSTALL, SttError, transcribe, whisper_available
 from suit_o.config import DEFAULT_CONFIG_PATH, load_config
-from suit_o.gui.chat import ChatPanel
+from suit_o.gui.chat import VRAM_NOTE, ChatPanel
 from suit_o.local_config import local_config_path, store_personal_settings
 from suit_o.reload import change_kind
 from suit_o.speech.stub import StubSpeechBackend
@@ -271,8 +274,99 @@ def test_app_speaks_chat_on_the_device_and_not_during_a_round():
         assert not any("Sorry about that." in item.message for item in app.activity())
         app._match_activity = "playing"
         app._match_round = "live"
+        app._match_map_phase = "live"
         app.speak_chat("Not during the round.")
         assert backend.spoken == ["Sorry about that."]
         assert app.match_is_live()
+        app._match_map_phase = "warmup"
+        app.speak_chat("Warmup is fine.")
+        assert app.speech.wait_until(lambda: backend.spoken[-1] == "Warmup is fine.", 2)
+        app._match_activity = "menu"
+        app._match_map_phase = "live"
+        app._match_round = "live"
+        assert app.match_is_live() is False
     finally:
         app.stop()
+
+
+def test_chat_allows_menu_warmup_and_the_gap_between_matches():
+    assert chat_is_paused("playing", "live", "live") is True
+    assert chat_is_paused("menu", "live", "live") is False
+    assert chat_is_paused("playing", "live", "warmup") is False
+    assert chat_is_paused("playing", "freezetime", "live") is False
+    assert chat_is_paused("playing", None, None) is False
+    assert chat_is_paused(None, None, None) is False
+
+
+def test_idle_releases_a_resident_model_and_a_live_round_releases_it_now():
+    calls: list[str] = []
+    lease = IdleRelease(lambda: calls.append("gone"), wait=IDLE_RELEASE_SECONDS)
+    assert lease.poll(IDLE_RELEASE_SECONDS, busy=False, paused=True) is False
+    lease.touch(0)
+    assert lease.poll(IDLE_RELEASE_SECONDS - 1, busy=False, paused=False) is False
+    assert lease.poll(IDLE_RELEASE_SECONDS, busy=True, paused=False) is False
+    assert lease.poll(IDLE_RELEASE_SECONDS * 2, busy=False, paused=False) is True
+    assert calls == ["gone"]
+    lease.touch(100)
+    assert lease.poll(100, busy=False, paused=True) is True
+    assert calls == ["gone", "gone"]
+
+
+def test_ollama_release_unloads_without_sending_a_key_and_openai_does_not_call_out():
+    settings = ChatSettings("ollama", DEFAULT_OLLAMA_URL, DEFAULT_MODEL, "", "")
+    seen: list[tuple[str, dict]] = []
+
+    def post(url, payload, headers):
+        seen.append((url, payload))
+        assert headers == {}
+        assert "key" not in payload
+        yield ""
+
+    assert release_model(settings, post=post) is True
+    assert seen == [(
+        "http://localhost:11434/api/generate",
+        {"model": DEFAULT_MODEL, "prompt": " ", "keep_alive": 0},
+    )]
+
+    remote = ChatSettings("openai", DEFAULT_OLLAMA_URL, "gpt-4o-mini", "http://127.0.0.1:9/v1", "sk-test")
+
+    def boom(_url, _payload, _headers):
+        raise AssertionError("a remote endpoint was asked to unload")
+        yield ""
+
+    assert release_model(remote, post=boom) is False
+
+
+def test_chat_panel_shows_the_vram_note_and_releases_after_idle():
+    released: list[str] = []
+
+    class _App:
+        config_path = None
+
+        def match_is_live(self) -> bool:
+            return False
+
+        def speak_chat(self, _text: str) -> None:
+            return None
+
+        def interrupt_chat(self) -> None:
+            return None
+
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        panel = ChatPanel(
+            ttk.Frame(root),
+            _App(),
+            schedule=lambda callback: callback(),
+            threaded=False,
+            generate=lambda _messages: iter(("Ok.",)),
+            on_release=lambda: released.append("yes"),
+        )
+        assert panel.vram_note.cget("text") == VRAM_NOTE
+        assert "7 to 9 GB" in VRAM_NOTE
+        panel._idle.touch(0)
+        assert panel.poll_idle(now=IDLE_RELEASE_SECONDS) is True
+        assert released == ["yes"]
+    finally:
+        root.destroy()

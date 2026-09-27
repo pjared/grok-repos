@@ -124,6 +124,7 @@ class SuitOApp:
         self.lineups.set_smokes_only(config.lineups.smokes_only)
         self._match_activity: str | None = None
         self._match_round: str | None = None
+        self._match_map_phase: str | None = None
         self._backend_factory = backend_factory or create_backend
         if not config.speech.voices_dir:
             config.speech.voices_dir = str(self.voices_dir)
@@ -549,9 +550,11 @@ class SuitOApp:
         )
 
     def match_is_live(self) -> bool:
-        """True while a round is live and the player is not in the menu."""
+        """True while a round is live. Menu, warmup, and time between matches are open."""
 
-        return self.restart_blocked()
+        from suit_o.chat.availability import chat_is_paused
+
+        return chat_is_paused(self._match_activity, self._match_round, self._match_map_phase)
 
     def speak_chat(self, text: str) -> None:
         """Speak one chat sentence on the selected voice and output device.
@@ -628,8 +631,14 @@ class SuitOApp:
         own = snapshot.own
         if own is not None and own.activity:
             self._match_activity = own.activity
+        if snapshot.map_present:
+            self._match_map_phase = snapshot.map_phase
+        else:
+            self._match_map_phase = None
         if snapshot.round_present and snapshot.round_phase:
             self._match_round = snapshot.round_phase
+        elif not snapshot.round_present:
+            self._match_round = None
 
     def lineup_view(self) -> DeckView:
         """Current overlay card. Safe to call from the window thread."""

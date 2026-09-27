@@ -640,6 +640,7 @@ class SuitOWindow:
         chat_panel = getattr(self, "chat_panel", None)
         if chat_panel is not None:
             chat_panel.sync_paused(self.app.match_is_live())
+            chat_panel.poll_idle()
 
     def _set_status(self, dot: tk.Label, label: ttk.Label, text: str, tone: str) -> None:
         color = tone_color(tone)

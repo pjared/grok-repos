@@ -199,9 +199,9 @@ Use the CS2 map id, such as `de_dust2` or `de_mirage`. A short folder name (`dus
 
 ## Chat
 
-The **Chat** tab is for talking to Suit-O between matches. Type a message, or hold **Hold to talk** when push-to-talk is installed. He answers in character, in the voice selected on the Voice tab, through the output device on the Listener tab. Replies show up as they stream, and he starts speaking at each sentence. **Stop** cuts him off. **Clear chat** forgets the conversation.
+The **Chat** tab is for talking to Suit-O outside a live round. Type a message. He answers in character, in text and in the voice selected on the Voice tab (including a cloned voice), through the output device on the Listener tab. Replies show up as they stream, and he starts speaking at each sentence. **Stop** cuts him off. **Clear chat** forgets the conversation.
 
-A live round shows **paused during match**. Chat does not call the model or speak during that round, so it does not compete with in-game lines.
+A live round (GSI round phase `live`) shows **paused during match**. Chat does not call the model or speak during that round, so it does not compete with in-game lines. The main menu, warmup, and the time between matches stay open. Live chat with CS2 open needs roughly 7 to 9 GB of VRAM. After the tab has been idle for about a minute, or as soon as a round goes live, Suit-O asks Ollama to unload the model so the GPU is not holding it.
 
 The persona is `lines/persona.txt`: an eager, jittery, over-apologetic helper who is also a teammate. Replies are supposed to stay short. He does not recite copyrighted game dialogue. Editing that file reloads on the next message. The transcript stays in memory, like the event log. Suit-O does not write it to a file.
 
