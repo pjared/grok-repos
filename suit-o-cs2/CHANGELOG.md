@@ -12,7 +12,7 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ### Fixed
 
-- The Lineups detail panel keeps the stand and aim pictures at a fixed size. Notes stay in the pack and are not shown there. A Source link opens the lineup's URL when one is set.
+- The Lineups detail panel keeps the stand and aim pictures at a fixed size. Notes stay in the pack and are not shown there. A Source link opens the lineup's URL when one is set. (`7080e63`)
 
 ## [0.19.2] - 2026-09-27
 
