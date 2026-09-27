@@ -10,6 +10,10 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+### Fixed
+
+- A Clips vocal-separation or speaker-tag error is shown in the window. The callback no longer crashes by reading the exception after the handler has finished.
+
 ## [0.19.6] - 2026-09-27
 
 ### Fixed

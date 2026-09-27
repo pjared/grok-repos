@@ -362,8 +362,9 @@ class ClipsPanel:
         def run() -> None:
             try:
                 vocals = separate_vocals(samples, rate)
-            except ClipError as exc:
-                self._schedule(lambda: self.status.configure(text=str(exc)))
+            except Exception as exc:
+                message = str(exc)
+                self._schedule(lambda message=message: self.status.configure(text=message))
                 return
             self._schedule(lambda: self._replace_audio(vocals, "Kept the vocal stem."))
 
@@ -383,8 +384,9 @@ class ClipsPanel:
         def run() -> None:
             try:
                 turns = diarize(samples, rate, token=token)
-            except ClipError as exc:
-                self._schedule(lambda: self.status.configure(text=str(exc)))
+            except Exception as exc:
+                message = str(exc)
+                self._schedule(lambda message=message: self.status.configure(text=message))
                 return
             self._schedule(lambda: self._show_speakers(turns))
 

@@ -209,6 +209,45 @@ def test_cleanup_passes_are_mocked_and_do_not_need_models(tmp_path: Path, monkey
     assert read_hf_token(config) == "from-env"
 
 
+def test_a_clip_pass_error_is_still_readable_after_the_worker_returns(monkeypatch):
+    import threading
+
+    from suit_o.gui.clips import ClipsPanel
+    from suit_o.voice.clips import ClipError
+
+    panel = object.__new__(ClipsPanel)
+    panel.samples = [0.0, 0.1]
+    panel.rate = 8
+    shown: list[str] = []
+    ready = threading.Event()
+
+    class _Status:
+        def configure(self, *, text: str) -> None:
+            shown.append(text)
+
+    panel.status = _Status()
+
+    def schedule(callback) -> None:
+        callback()
+        ready.set()
+
+    panel._schedule = schedule
+
+    def boom(_samples, _rate, **_kwargs):
+        raise ClipError("demucs is not installed")
+
+    monkeypatch.setattr("suit_o.voice.passes.separate_vocals", boom)
+    monkeypatch.setattr("suit_o.voice.passes.diarize", boom)
+    panel.separate_vocals()
+    assert ready.wait(2)
+    assert shown[-1] == "demucs is not installed"
+    ready.clear()
+    panel.app = type("App", (), {"config_path": None})()
+    panel.tag_speakers()
+    assert ready.wait(2)
+    assert shown[-1] == "demucs is not installed"
+
+
 def _write_stereo(path: Path, samples: list[int], rate: int) -> None:
     payload = array("h", samples)
     with wave.open(str(path), "wb") as handle:
