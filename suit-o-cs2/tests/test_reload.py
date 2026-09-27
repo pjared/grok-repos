@@ -667,12 +667,47 @@ def test_update_errors_when_checkout_is_not_the_checked_commit(tmp_path: Path):
     assert diffs == []
 
 
+def test_update_does_not_install_developer_requirements(tmp_path: Path):
+    project = tmp_path / "suit-o-cs2"
+    project.mkdir()
+    (tmp_path / ".git").mkdir()
+    (project / "requirements.txt").write_text("pyyaml\n", encoding="utf-8")
+    (project / "requirements-dev.txt").write_text("pytest\n", encoding="utf-8")
+    heads = iter(["aaa\n", "bbb\n"])
+
+    def runner(args, _cwd):
+        if args == ["git", "rev-parse", "HEAD"]:
+            return CommandResult(0, next(heads), "")
+        if args == ["git", "fetch", "origin"]:
+            return CommandResult(0, "", "")
+        if args == ["git", "rev-parse", "origin/main"]:
+            return CommandResult(0, "bbb\n", "")
+        if args[:2] == ["git", "rev-list"]:
+            return CommandResult(0, "", "")
+        if args == ["git", "merge", "--ff-only", "bbb"]:
+            return CommandResult(0, "Updating aaa..bbb\n", "")
+        if args[:2] == ["git", "diff"]:
+            return CommandResult(
+                0,
+                "suit-o-cs2/requirements.txt\nsuit-o-cs2/requirements-dev.txt\n",
+                "",
+            )
+        return CommandResult(1, "", f"unexpected {args}")
+
+    updated = run_git_update(project, runner, check=lambda _sha: "success")
+    assert updated.ok is True
+    assert [Path(item).name for item in updated.requirements] == ["requirements.txt"]
+    assert "requirements-dev.txt" not in updated.message
+
+
 def test_release_job_starts_tests_on_the_cut_commit():
     import yaml
 
     from suit_o.config import PROJECT_ROOT
 
     workflow = yaml.safe_load((PROJECT_ROOT.parent / ".github" / "workflows" / "suit-o-tests.yml").read_text())
+    pytest_steps = {step["name"]: step for step in workflow["jobs"]["pytest"]["steps"] if "name" in step}
+    assert "requirements-dev.txt" in pytest_steps["Install"]["run"]
     trigger = workflow[True]
     assert trigger["push"]["branches"] == ["main"]
     assert trigger["workflow_dispatch"] is None

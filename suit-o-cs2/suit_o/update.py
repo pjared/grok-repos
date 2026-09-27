@@ -14,7 +14,6 @@ from pathlib import Path
 
 REQUIREMENT_NAMES = (
     "requirements.txt",
-    "requirements-dev.txt",
     "requirements-voice.txt",
     "requirements-clips.txt",
     "requirements-chat.txt",
