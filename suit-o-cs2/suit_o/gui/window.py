@@ -19,6 +19,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from suit_o.app import SuitOApp
+from suit_o.changelog import ChangelogError, ReleaseNotes, changes_between, parse_changelog
 from suit_o.config import PROJECT_ROOT, ConfigError
 from suit_o.local_config import local_config_path
 from suit_o.reload import (
@@ -31,6 +32,7 @@ from suit_o.reload import (
     write_restart_state,
 )
 from suit_o.update import install_requirements, run_git_update
+from suit_o.version import VersionError, read_version
 from suit_o.gui.status import (
     device_menu_labels,
     format_activity,
@@ -45,6 +47,7 @@ from suit_o.gui.global_hotkeys import GlobalHotkeys
 from suit_o.gui.chat import ChatPanel
 from suit_o.gui.clips import ClipsPanel
 from suit_o.gui.lineups import LineupsPanel
+from suit_o.gui.news import WhatsNew
 from suit_o.gui.overlay import LineupOverlay, monitors_for
 from suit_o.gui.training import TrainingPanel
 from suit_o.gui.voice import VoicePanel
@@ -71,6 +74,8 @@ class SuitOWindow:
         self._pending_restart = False
         self._pending_notice = "Reloaded"
         self._pending_noted = False
+        self._version_text = _app_version()
+        self._update_previous_version = ""
         config_path = app.config_path or (PROJECT_ROOT / "config.yaml")
         self._watcher = FileWatcher(
             PROJECT_ROOT,
@@ -94,8 +99,11 @@ class SuitOWindow:
         header = ttk.Frame(frame)
         header.grid(row=0, column=0, sticky="ew")
         ttk.Label(header, text="Suit-O", font=("TkDefaultFont", 16, "bold")).pack(side="left")
+        self.version_label = ttk.Label(header, text=self._version_text)
+        self.version_label.pack(side="left", padx=(8, 0))
         self.notice = ttk.Label(header, text="", foreground="#0b6e4f")
         self.notice.pack(side="left", padx=(12, 0))
+        ttk.Button(header, text="What's new", command=self._open_whats_new).pack(side="right")
         ttk.Label(frame, text="Local CS2 companion").grid(row=1, column=0, sticky="w", pady=(0, 8))
 
         self.notebook = ttk.Notebook(frame)
@@ -461,6 +469,12 @@ class SuitOWindow:
         notice = state.notice or "Reloaded"
         self._show_notice(notice)
         self.app.note(notice)
+        previous = state.previous_version
+        if previous and previous != self._version_text:
+            self.root.after(
+                0,
+                lambda old=previous, new=self._version_text: self._show_whats_new(old, new),
+            )
 
     def _restart_or_defer(self, notice: str) -> None:
         if self.app.restart_blocked():
@@ -576,7 +590,49 @@ class SuitOWindow:
         self.update_status.configure(text=outcome.message)
         self.app.note(outcome.message)
         if outcome.ok and outcome.changed:
+            self._update_previous_version = self._version_text
             self._restart_or_defer("Reloaded")
+
+    def _previous_version_for_restart(self) -> str:
+        """The version Update replaced, when this restart follows a pull."""
+
+        previous = self._update_previous_version
+        if not previous:
+            return ""
+        try:
+            current = read_version()
+        except VersionError:
+            return ""
+        if previous == current:
+            return ""
+        return previous
+
+    def _open_whats_new(self) -> None:
+        self._show_whats_new()
+
+    def _show_whats_new(self, old: str = "", new: str = "") -> None:
+        """Open changelog sections. A range is the pull; otherwise the current version."""
+
+        if self._closed:
+            return
+        notes = self._load_notes()
+        if notes is None:
+            return
+        if old and new:
+            selected = changes_between(notes, old, new)
+            title = f"What's new in {new}"
+        else:
+            selected = _notes_for_version(notes, self._version_text)
+            title = f"What's new in {self._version_text}" if self._version_text else "What's new"
+        WhatsNew(self.root, title, selected)
+
+    def _load_notes(self) -> list[ReleaseNotes] | None:
+        path = PROJECT_ROOT / "CHANGELOG.md"
+        try:
+            return parse_changelog(path.read_text(encoding="utf-8"))
+        except (OSError, ChangelogError) as exc:
+            messagebox.showerror("Suit-O", f"Could not read the changelog.\n{exc}")
+            return None
 
     def _restart_in_place(self, notice: str) -> None:
         """Stop the listener, free its port, and replace this process."""
@@ -601,8 +657,17 @@ class SuitOWindow:
                 tab = 0
             write_restart_state(
                 self.app.config_path,
-                RestartState(x=x, y=y, width=width, height=height, tab=tab, notice=notice),
+                RestartState(
+                    x=x,
+                    y=y,
+                    width=width,
+                    height=height,
+                    tab=tab,
+                    notice=notice,
+                    previous_version=self._previous_version_for_restart(),
+                ),
             )
+            self._update_previous_version = ""
         write_activity_handoff(
             [(entry.at, entry.message) for entry in self.app.activity()],
             secret=self.app.config.server.token,
@@ -689,6 +754,21 @@ class SuitOWindow:
             yield
         finally:
             self._syncing_volume = False
+
+
+def _app_version() -> str:
+    try:
+        return read_version()
+    except VersionError:
+        return ""
+
+
+def _notes_for_version(notes: list[ReleaseNotes], version: str) -> list[ReleaseNotes]:
+    match = [item for item in notes if item.version == version]
+    if match:
+        return match
+    released = [item for item in notes if item.version != "Unreleased"]
+    return released[:1]
 
 
 def _parse_geometry(spec: str) -> tuple[int, int, int, int]:

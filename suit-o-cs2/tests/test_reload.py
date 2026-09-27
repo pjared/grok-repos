@@ -178,7 +178,7 @@ def test_invalid_config_and_lines_keep_the_previous_settings(tmp_path: Path):
 def test_restart_state_round_trip_and_launch_argv(tmp_path: Path):
     path = tmp_path / "config.yaml"
     path.write_text("server: {}\n", encoding="utf-8")
-    write_restart_state(path, RestartState(12, -4, 800, 600, 2, "Reloaded"))
+    write_restart_state(path, RestartState(12, -4, 800, 600, 2, "Reloaded", "0.17.0"))
     state = consume_restart_state(path)
     assert state is not None
     assert (state.x, state.y, state.width, state.height, state.tab, state.notice) == (
@@ -189,6 +189,7 @@ def test_restart_state_round_trip_and_launch_argv(tmp_path: Path):
         2,
         "Reloaded",
     )
+    assert state.previous_version == "0.17.0"
     assert consume_restart_state(path) is None
     argv = gui_restart_argv(path)
     assert argv[1:4] == ["-m", "suit_o.gui", "--config"]

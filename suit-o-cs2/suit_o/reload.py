@@ -31,6 +31,7 @@ class RestartState:
     height: int
     tab: int
     notice: str
+    previous_version: str = ""
 
 
 class ChangeDebouncer:
@@ -191,6 +192,7 @@ def write_restart_state(config_path: Path, state: RestartState) -> None:
         "height": max(1, int(state.height)),
         "tab": int(state.tab),
         "notice": state.notice,
+        "previous_version": state.previous_version,
     }
     path.write_text(json.dumps(payload), encoding="utf-8")
 
@@ -211,6 +213,7 @@ def consume_restart_state(config_path: Path) -> RestartState | None:
             height=int(raw["height"]),
             tab=int(raw["tab"]),
             notice=str(raw.get("notice") or "Reloaded"),
+            previous_version=str(raw.get("previous_version") or ""),
         )
     except (OSError, ValueError, KeyError, TypeError):
         state = None

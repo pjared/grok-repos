@@ -5,4 +5,6 @@ original lines about the player's own match. It does not read game memory,
 draw an overlay, or send anything to voice chat.
 """
 
-__version__ = "1.0.0"
+from suit_o.version import read_version
+
+__version__ = read_version()
