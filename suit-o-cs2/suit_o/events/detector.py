@@ -1,10 +1,13 @@
 """Detect match events by diffing successive own-player snapshots.
 
-The first gameplay snapshot is a baseline and emits nothing. A first snapshot
-that is already the main menu is the exception: that is CS2 launching into
-the menu, and it emits the Premier greeting once. Later snapshots emit an
-event only on a transition. Stats from a spectated player (a steamid that
-does not match provider.steamid) never update the local player's memory.
+The first gameplay snapshot is a baseline and emits nothing, except a Premier
+greeting when that first connection is already the main menu (or the console
+or chat on top of it). A later greeting happens only after a match ends: the
+map was present and is now gone. Flips between ``menu`` and ``textinput`` are
+the console or chat opening and closing, and they are not a new visit. Later
+snapshots emit every other event only on a transition. Stats from a spectated
+player (a steamid that does not match provider.steamid) never update the
+local player's memory.
 """
 
 from __future__ import annotations
@@ -31,16 +34,19 @@ class EventDetector:
         self._bomb: str | None = None
         self._activity: str | None = None
         self._own: OwnPlayer | None = None
+        self._map_present = False
+        self._greeting_after_match = False
 
     def update(self, snap: Snapshot) -> list[DetectedEvent]:
         if not self._seen:
             self._remember(snap)
             self._seen = True
-            if snap.own is not None and _is_menu(snap.own.activity):
+            if snap.own is not None and _menu_shell(snap.own.activity):
                 return [self._event(EventType.MENU_GREETING, snap.own)]
             return []
 
         events: list[DetectedEvent] = []
+        map_was_present = self._map_present
         new_phase = snap.map_phase if snap.map_present else self._map_phase
         if snap.map_present and snap.map_name:
             self._map_name = snap.map_name
@@ -62,16 +68,17 @@ class EventDetector:
             merged = _merge_own(self._own, snap.own)
             if _is_menu(merged.activity) and not _is_menu(self._activity):
                 events.append(self._event(EventType.IDLE, merged))
-                events.append(self._event(EventType.MENU_GREETING, merged))
             events.extend(self._combat_events(self._own, merged, round_changed))
             self._own = merged
             self._activity = merged.activity
+        self._greet_for_visit(snap, events, map_was_present=map_was_present)
 
         phase_for_round = new_phase
         if phase_for_round == "live":
             events.extend(self._round_events(snap, round_changed))
             events.extend(self._bomb_events(snap))
 
+        self._map_present = snap.map_present
         if snap.map_present:
             self._map_phase = new_phase
             if snap.round_number is not None:
@@ -187,6 +194,7 @@ class EventDetector:
         return events
 
     def _remember(self, snap: Snapshot) -> None:
+        self._map_present = snap.map_present
         if snap.map_present:
             self._map_phase = snap.map_phase
             self._map_name = snap.map_name
@@ -200,6 +208,29 @@ class EventDetector:
             self._own = snap.own
             self._activity = snap.own.activity
 
+    def _greet_for_visit(self, snap: Snapshot, events: list[DetectedEvent], *, map_was_present: bool) -> None:
+        """Greet only when a match's map has just disappeared.
+
+        The first connection is handled before this. ``menu`` and ``textinput``
+        are the same visit, so the console does not greet again.
+        """
+
+        map_gone = map_was_present and not snap.map_present
+        in_shell = _menu_shell(self._activity)
+        if snap.map_present:
+            self._greeting_after_match = False
+            return
+        if map_gone and in_shell:
+            events.append(self._event(EventType.MENU_GREETING, self._own))
+            self._greeting_after_match = False
+            return
+        if map_gone:
+            self._greeting_after_match = True
+            return
+        if self._greeting_after_match and in_shell:
+            events.append(self._event(EventType.MENU_GREETING, self._own))
+            self._greeting_after_match = False
+
     def _own_after(self, snap: Snapshot) -> OwnPlayer | None:
         if snap.own is None:
             return self._own
@@ -212,6 +243,12 @@ class EventDetector:
 
 def _is_menu(activity: str | None) -> bool:
     return (activity or "").strip().lower() == "menu"
+
+
+def _menu_shell(activity: str | None) -> bool:
+    """Main menu, including the console or chat open on top of it."""
+
+    return (activity or "").strip().lower() in {"menu", "textinput"}
 
 
 def _merge_own(previous: OwnPlayer | None, incoming: OwnPlayer) -> OwnPlayer:

@@ -34,9 +34,10 @@ speech:
 
 mute: false
 
-# Ask about queueing Premier when CS2 is in the main menu, including the
-# first connect and a return from a match. Once per visit, and not again
-# for 10 minutes. The Listener tab can turn this off.
+# Ask about queueing Premier on the first connection after CS2 starts, and
+# again when a match ends and the map goes away. Opening the console or chat
+# (menu flipping with textinput) is not a new visit. Not again for 10 minutes.
+# The Listener tab can turn this off.
 menu_greeting: true
 
 cooldowns:

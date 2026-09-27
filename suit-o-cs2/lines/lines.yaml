@@ -27,12 +27,11 @@ events:
     - "Oh good, practice. I practiced my practice speech. It needs practice."
 
   menu_greeting:
-    - "You are in the main menu. I have one question, and then I will hover. Are you ready to queue Premier."
-    - "Oh. Menu. Detective mode looked for a match and found a button. Premier. Shall we. I cannot press it. I can only ask, which is the whole job."
-    - "Helpful tip: Premier is a queue, not a mood, although I am in one. Are you ready. I will be in the headset either way, vibrating."
-    - "Welcome in. I already warmed up my worrying. If you are ready to queue Premier, blink twice. I cannot see you. I will assume the blink."
-    - "Back in the menu. I missed you for the entire loading screen, which was rude of the loading screen. Premier?"
-    - "I prepared a speech about Premier and it is four words: are you ready. I can repeat them. I will."
+    - "H-hey! You're in the menu! Are we, um, are we queuing Premier? I'm ready. I think I'm ready."
+    - "Premier? Tonight? Okay. Okay okay okay. Let's go lose some Elo together. I mean win! Win Elo."
+    - "Welcome back! Helpful tip: the Play button is the big one. Ready to queue?"
+    - "Okay. Menu. I checked my notes and the notes just say Premier, with a little heart I will deny drawing. Are we queuing?"
+    - "I am ready when you are. That was a lie. I have been ready since the loading screen. Premier?"
 
   idle:
     - "You are in the menu. I will just stand in the headset. Like a very small tragic opera."

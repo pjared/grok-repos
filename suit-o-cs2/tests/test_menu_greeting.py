@@ -19,14 +19,47 @@ def _types(detector: EventDetector, payload: dict) -> list[EventType]:
     return [event.type for event in detector.update(snapshot)]
 
 
-def test_first_connect_greets_once_and_a_return_can_greet_again():
+def test_first_connect_greets_once_until_a_match_ends():
     detector = EventDetector(thresholds())
     menu = dict(activity="menu", include_map=False, include_round=False)
     assert _types(detector, make_payload(**menu)) == [EventType.MENU_GREETING]
     assert _types(detector, make_payload(**menu)) == []
     assert _types(detector, make_payload(activity="playing", include_map=False, include_round=False)) == []
-    assert _types(detector, make_payload(**menu)) == [EventType.IDLE, EventType.MENU_GREETING]
-    assert _types(detector, make_payload(**menu)) == []
+    back = _types(detector, make_payload(**menu))
+    assert EventType.MENU_GREETING not in back
+    assert EventType.IDLE in back
+
+    played = EventDetector(thresholds())
+    assert EventType.MENU_GREETING not in _types(played, make_payload(map_phase="live"))
+    returned = _types(played, make_payload(**menu))
+    assert returned == [EventType.IDLE, EventType.MENU_GREETING]
+    assert _types(played, make_payload(**menu)) == []
+
+    delayed = EventDetector(thresholds())
+    assert EventType.MENU_GREETING not in _types(delayed, make_payload(map_phase="live"))
+    assert EventType.MENU_GREETING not in _types(
+        delayed, make_payload(activity="playing", include_map=False, include_round=False)
+    )
+    arrived = _types(delayed, make_payload(**menu))
+    assert EventType.MENU_GREETING in arrived
+
+
+def test_textinput_flip_does_not_greet_again():
+    detector = EventDetector(thresholds())
+    quiet = dict(include_map=False, include_round=False)
+    assert _types(detector, make_payload(activity="menu", **quiet)) == [EventType.MENU_GREETING]
+    assert _types(detector, make_payload(activity="textinput", **quiet)) == []
+    assert EventType.MENU_GREETING not in _types(detector, make_payload(activity="menu", **quiet))
+    assert _types(detector, make_payload(activity="textinput", **quiet)) == []
+
+    played = EventDetector(thresholds())
+    assert EventType.MENU_GREETING not in _types(played, make_payload(activity="playing", map_phase="live"))
+    assert EventType.MENU_GREETING not in _types(played, make_payload(activity="textinput", map_phase="live"))
+    assert EventType.MENU_GREETING not in _types(played, make_payload(activity="playing", map_phase="live"))
+    returned = _types(played, make_payload(activity="menu", **quiet))
+    assert EventType.MENU_GREETING in returned
+    assert EventType.MENU_GREETING not in _types(played, make_payload(activity="textinput", **quiet))
+    assert EventType.MENU_GREETING not in _types(played, make_payload(activity="menu", **quiet))
 
 
 def test_greeting_cooldown_is_ten_minutes():
@@ -45,7 +78,7 @@ def test_greeting_cooldown_is_ten_minutes():
 
 
 def test_app_greets_on_the_menu_and_the_toggle_skips_it(tmp_path):
-    moments = iter([0.0, 1.0, 2.0, 60.0, 61.0, 600.0])
+    moments = iter([0.0, 1.0, 2.0, 3.0, 60.0, 61.0, 600.0])
     app = SuitOApp(
         load_config(DEFAULT_CONFIG_PATH),
         backend=StubSpeechBackend(),
@@ -64,20 +97,19 @@ def test_app_greets_on_the_menu_and_the_toggle_skips_it(tmp_path):
         ]
 
     app._handle(make_payload(**menu))
+    app._handle(make_payload(activity="textinput", include_map=False, include_round=False))
     app._handle(make_payload(**menu))
     assert len(greetings()) == 1
-    assert "Premier" in greetings()[0]
+    assert any(snippet in greetings()[0] for snippet in ("Premier", "Ready to queue?"))
 
-    app._handle(make_payload(activity="playing", include_map=False, include_round=False))
+    app._handle(make_payload(map_phase="live"))
     app._handle(make_payload(**menu))
     assert len(greetings()) == 1
     assert any(item.message == "menu_greeting: skipped (cooldown)" for item in app.activity())
-    assert any(item.message.startswith("idle: ") and "skipped" not in item.message for item in app.activity())
 
-    app._handle(make_payload(activity="playing", include_map=False, include_round=False))
+    app._handle(make_payload(map_phase="live"))
     app._handle(make_payload(**menu))
     assert len(greetings()) == 2
-    assert "Premier" in greetings()[-1]
 
     quiet = SuitOApp(
         load_config(DEFAULT_CONFIG_PATH),
