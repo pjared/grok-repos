@@ -494,11 +494,12 @@ def test_unknown_fields_are_kept_and_logged_once(tmp_path: Path):
     assert window.source_url == "https://example.com/window"
 
 
-def test_detail_view_shows_notes_and_the_source_link(tmp_path: Path):
+def test_detail_view_shows_a_source_link_and_keeps_the_photos(tmp_path: Path):
+    import tkinter.font as tkfont
     from tkinter import ttk
 
     from suit_o.config import LineupConfig
-    from suit_o.gui.lineups import LineupsPanel
+    from suit_o.gui.lineups import _PHOTO_HEIGHT, _PHOTO_WIDTH, LineupsPanel
     from tkutil import open_tk_or_skip
 
     source = tmp_path / "pack"
@@ -521,6 +522,12 @@ def test_detail_view_shows_notes_and_the_source_link(tmp_path: Path):
                 notes="Throw from ramp.",
                 source_url="https://example.com/flash",
             ),
+            _row(
+                id="mirage-t-smoke-no-source",
+                name="No source",
+                notes="These notes stay in the file.",
+                source_url="",
+            ),
         ],
         "generator": "mirage-pack",
     }
@@ -541,18 +548,41 @@ def test_detail_view_shows_notes_and_the_source_link(tmp_path: Path):
 
     root = open_tk_or_skip()
     try:
+        frame = ttk.Frame(root)
+        frame.pack(fill="both", expand=True)
+        root.geometry("860x900")
         app = _App()
-        panel = LineupsPanel(ttk.Frame(root), app, on_saved=lambda: None)
+        panel = LineupsPanel(frame, app, on_saved=lambda: None)
         panel.import_pack_from(source)
         root.update_idletasks()
         assert app.messages == ["lineups: kept extra fields: editor, generator"]
-        assert panel.notes_label.cget("text") == "Stand on the box."
-        assert panel.source_link.cget("text") == "https://example.com/window"
+        assert panel._cards[0].notes == "Stand on the box."
+        assert "Stand on the box." not in panel.setpos_box.get("1.0", "end")
+        assert panel.copy_button.cget("text") == "Copy setpos"
+        assert panel.source_link.cget("text") == "Source"
+        assert panel.source_link.cget("fg") == "#0b57d0"
+        assert panel.source_link.cget("cursor") == "hand2"
+        assert tkfont.Font(font=panel.source_link.cget("font")).cget("underline") == 1
+        assert panel.source_link.grid_info()
         assert panel._source_url == "https://example.com/window"
+        assert int(panel.preview.cget("width")) == _PHOTO_WIDTH
+        assert int(panel.preview.cget("height")) == _PHOTO_HEIGHT
+        assert int(panel.preview_aim.cget("width")) == _PHOTO_WIDTH
+        assert int(panel.preview_aim.cget("height")) == _PHOTO_HEIGHT
+        assert panel._photo is not None
+        assert panel._photo.width() <= _PHOTO_WIDTH
+        assert panel._photo.height() <= _PHOTO_HEIGHT
         panel.cards.selection_set("1")
         panel._show_selected()
-        assert panel.notes_label.cget("text") == "Throw from ramp."
-        assert panel.source_link.cget("text") == "https://example.com/flash"
+        assert panel.source_link.cget("text") == "Source"
+        assert panel._source_url == "https://example.com/flash"
+        assert panel.source_link.grid_info()
+        panel.cards.selection_set("2")
+        panel._show_selected()
+        assert panel._cards[2].notes == "These notes stay in the file."
+        assert panel.source_link.cget("text") == ""
+        assert panel._source_url == ""
+        assert panel.source_link.grid_info() == {}
         panel.import_pack_from(source)
         assert app.messages == ["lineups: kept extra fields: editor, generator"]
     finally:

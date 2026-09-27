@@ -8,6 +8,7 @@ Copy setpos puts practice-server text on the clipboard. It is never sent to CS2.
 from __future__ import annotations
 
 import tkinter as tk
+import tkinter.font as tkfont
 import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -51,6 +52,8 @@ PREMIER_MAPS = (
 _SIDES = ("All", "T", "CT")
 _GRENADES = ("All", "smoke", "flash", "molotov", "he")
 _STATUSES = ("All", "draft", "verified")
+_PHOTO_WIDTH = 168
+_PHOTO_HEIGHT = 126
 
 
 class LineupsPanel:
@@ -129,14 +132,31 @@ class LineupsPanel:
         preview.grid(row=0, column=2, sticky="nsew")
         preview.columnconfigure(0, weight=1)
         preview.columnconfigure(1, weight=1)
+        preview.rowconfigure(0, minsize=_PHOTO_HEIGHT, weight=0)
         photos = ttk.Frame(preview)
-        photos.grid(row=0, column=0, columnspan=2, sticky="nsew")
-        photos.columnconfigure(0, weight=1)
-        photos.columnconfigure(1, weight=1)
-        self.preview = tk.Label(photos, bg="#f4f4f4", width=18, height=6, anchor="center")
-        self.preview.grid(row=0, column=0, sticky="nsew")
-        self.preview_aim = tk.Label(photos, bg="#f4f4f4", width=18, height=6, anchor="center")
-        self.preview_aim.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
+        photos.grid(row=0, column=0, columnspan=2, sticky="nw")
+        photos.columnconfigure(0, minsize=_PHOTO_WIDTH, weight=0)
+        photos.columnconfigure(1, minsize=_PHOTO_WIDTH, weight=0)
+        photos.rowconfigure(0, minsize=_PHOTO_HEIGHT, weight=0)
+        self._blank_photo = tk.PhotoImage(width=_PHOTO_WIDTH, height=_PHOTO_HEIGHT)
+        self.preview = tk.Label(
+            photos,
+            image=self._blank_photo,
+            width=_PHOTO_WIDTH,
+            height=_PHOTO_HEIGHT,
+            bg="#f4f4f4",
+            anchor="center",
+        )
+        self.preview.grid(row=0, column=0, sticky="nw")
+        self.preview_aim = tk.Label(
+            photos,
+            image=self._blank_photo,
+            width=_PHOTO_WIDTH,
+            height=_PHOTO_HEIGHT,
+            bg="#f4f4f4",
+            anchor="center",
+        )
+        self.preview_aim.grid(row=0, column=1, sticky="nw", padx=(4, 0))
         ttk.Label(preview, text="setpos").grid(row=1, column=0, sticky="w", pady=(6, 0))
         self.copy_button = ttk.Button(preview, text="Copy setpos", command=self.copy_setpos)
         self.copy_button.grid(row=1, column=1, sticky="e", pady=(6, 0))
@@ -148,18 +168,16 @@ class LineupsPanel:
             text="Practice server only. Never sent to CS2.",
             wraplength=260,
         ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(2, 0))
-        self.notes_label = ttk.Label(preview, text="", wraplength=280, justify="left")
-        self.notes_label.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+        self._source_font = tkfont.nametofont("TkDefaultFont").copy()
+        self._source_font.configure(underline=True)
         self.source_link = tk.Label(
             preview,
-            text="",
+            text="Source",
             fg="#0b57d0",
             cursor="hand2",
-            wraplength=280,
-            justify="left",
+            font=self._source_font,
             anchor="w",
         )
-        self.source_link.grid(row=5, column=0, columnspan=2, sticky="ew")
         self.source_link.bind("<Button-1>", self._open_source)
 
         buttons = ttk.Frame(parent)
@@ -599,26 +617,26 @@ class LineupsPanel:
         if card is None:
             return
         try:
-            self._photo = _fit_photo(str(card.path), 180)
+            self._photo = _fit_photo(str(card.path), _PHOTO_WIDTH, _PHOTO_HEIGHT)
         except tk.TclError as exc:
             self._clear_preview(str(exc))
             self._set_setpos(card.setpos)
-            self._set_notes(card.notes, card.source_url)
+            self._set_source(card.source_url)
             return
         self.preview.configure(image=self._photo, text="")
         if card.aim_path is not None:
             try:
-                self._aim_photo = _fit_photo(str(card.aim_path), 180)
+                self._aim_photo = _fit_photo(str(card.aim_path), _PHOTO_WIDTH, _PHOTO_HEIGHT)
             except tk.TclError:
                 self._aim_photo = None
-                self.preview_aim.configure(image="", text="")
+                self.preview_aim.configure(image=self._blank_photo, text="")
             else:
                 self.preview_aim.configure(image=self._aim_photo, text="")
         else:
             self._aim_photo = None
-            self.preview_aim.configure(image="", text="")
+            self.preview_aim.configure(image=self._blank_photo, text="")
         self._set_setpos(card.setpos)
-        self._set_notes(card.notes, card.source_url)
+        self._set_source(card.source_url)
         if card.setpos:
             self.copy_button.state(["!disabled"])
         else:
@@ -627,10 +645,10 @@ class LineupsPanel:
     def _clear_preview(self, message: str) -> None:
         self._photo = None
         self._aim_photo = None
-        self.preview.configure(image="", text=message)
-        self.preview_aim.configure(image="", text="")
+        self.preview.configure(image=self._blank_photo, text=message, compound="center")
+        self.preview_aim.configure(image=self._blank_photo, text="")
         self._set_setpos("")
-        self._set_notes("", "")
+        self._set_source("")
         self.copy_button.state(["disabled"])
 
     def _set_setpos(self, text: str) -> None:
@@ -640,14 +658,15 @@ class LineupsPanel:
             self.setpos_box.insert("1.0", text)
         self.setpos_box.configure(state="disabled")
 
-    def _set_notes(self, notes: str, source_url: str) -> None:
-        self.notes_label.configure(text=notes)
+    def _set_source(self, source_url: str) -> None:
         url = source_url.strip()
         self._source_url = url if url.startswith(("http://", "https://")) else ""
-        if url:
-            self.source_link.configure(text=url)
+        if self._source_url:
+            self.source_link.configure(text="Source")
+            self.source_link.grid(row=4, column=0, columnspan=2, sticky="w", pady=(6, 0))
         else:
             self.source_link.configure(text="")
+            self.source_link.grid_forget()
 
     def _open_source(self, _event: object = None) -> None:
         if self._source_url:
@@ -664,7 +683,7 @@ class LineupsPanel:
             return
 
 
-def _fit_photo(path: str, max_width: int) -> tk.PhotoImage:
+def _fit_photo(path: str, max_width: int, max_height: int) -> tk.PhotoImage:
     from suit_o.gui.photos import fit_photo
 
-    return fit_photo(path, max_width)
+    return fit_photo(path, max_width, max_height)

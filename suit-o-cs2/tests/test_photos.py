@@ -19,5 +19,10 @@ def test_jpeg_and_webp_lineup_photos_fit(tmp_path: Path):
             photo = fit_photo(str(path), 16)
             assert 1 <= photo.width() <= 16
             assert photo.height() >= 1
+        wide = tmp_path / "wide.png"
+        Image.new("RGB", (400, 100), (1, 2, 3)).save(wide)
+        fitted = fit_photo(str(wide), 160, 120)
+        assert fitted.width() == 160
+        assert fitted.height() == 40
     finally:
         root.destroy()
