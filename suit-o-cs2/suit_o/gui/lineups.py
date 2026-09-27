@@ -145,6 +145,23 @@ class LineupsPanel:
         self._paint_captions()
         self.reload_maps()
 
+    def sync_from_app(self) -> None:
+        """Paint the saved overlay settings after a content reload."""
+
+        settings = self.app.config.lineups
+        self.enabled.set(settings.enabled)
+        self.width.set(settings.width)
+        self.opacity.set(round(settings.opacity * 100))
+        if settings.corner in CORNERS:
+            self.corner.set(settings.corner)
+        self.hotkey_next.set(settings.hotkey_next)
+        self.hotkey_previous.set(settings.hotkey_previous)
+        self.hotkey_toggle.set(settings.hotkey_toggle)
+        labels = list(self.monitor["values"])
+        if labels and 0 <= settings.monitor < len(labels):
+            self.monitor.set(labels[settings.monitor])
+        self._paint_captions()
+
     def set_monitors(self, labels: list[str]) -> None:
         self.monitor["values"] = labels or ["Primary"]
         current = self.app.config.lineups.monitor

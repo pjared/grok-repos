@@ -9,6 +9,7 @@ from pathlib import Path
 
 from suit_o.app import SuitOApp
 from suit_o.config import DEFAULT_CONFIG_PATH, ConfigError, load_config
+from suit_o.local_config import migrate_user_settings
 
 logger = logging.getLogger("suit_o")
 
@@ -33,6 +34,10 @@ def main(argv: list[str] | None = None) -> int:
         datefmt="%H:%M:%S",
     )
     try:
+        try:
+            migrate_user_settings(args.config)
+        except (ConfigError, OSError, ValueError) as exc:
+            logger.warning("Could not move personal settings into config.local.yaml: %s", exc)
         config = load_config(args.config)
     except (ConfigError, OSError, ValueError) as exc:
         print(f"Config error: {exc}", file=sys.stderr)

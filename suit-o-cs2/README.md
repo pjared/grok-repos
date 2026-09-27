@@ -20,7 +20,8 @@ Bomb coordinates and weapon lists may arrive in the payload because the config a
 | `suit_o/events/` | Diffs snapshots into typed events. |
 | `suit_o/lines/` | `LineProvider` chooses a line. v1 reads `lines/lines.yaml`. A future AI provider can replace this class without touching detection. |
 | `suit_o/speech/` | `SpeechBackend` plays audio. v1 uses `pyttsx3` (SAPI). `remote` is a documented stub and is not implemented. |
-| `config.yaml` | Port, token, voice, device, cooldowns, mute, and a reserved push-to-talk key. |
+| `config.yaml` | Shared settings: port, token, cooldowns, and the reserved push-to-talk key. This file stays in git. |
+| `config.local.yaml` | Your settings: output device, volume, mute, voice tuning, and the lineup overlay. Git ignores it. |
 | `gamestate_integration_suito.cfg` | The file you copy into the CS2 `cfg` folder. |
 
 ## Windows setup
@@ -63,9 +64,9 @@ These steps assume Windows 10 or 11 and the default Steam library path. If CS2 i
 
    `Start Suit-O GUI.bat` does the same thing with `pythonw`. The window has four tabs.
 
-   **Listener.** Shows whether the listener is up and how long it has been since CS2 last sent game state. Mute, volume, and the output device are saved back to `config.yaml`. Pick the playback device you actually want to hear. The list is Windows' speech outputs (SAPI), for example speakers, a headset earphone, a digital output, or a monitor. A headset often shows up twice — once for game audio and once for chat — and the Windows default is not always the one that makes a sound. Choose the endpoint, then press **Test voice**. Microphones are not listed, and Suit-O still refuses a microphone or virtual-cable name if one is typed into `speech.output_device`.
+   **Listener.** Shows whether the listener is up and how long it has been since CS2 last sent game state. Mute, volume, and the output device are saved to `config.local.yaml` (next to `config.yaml`, and not part of git). The first time Suit-O starts, settings you already changed in `config.yaml` — such as a JBL chat output device — are copied into that local file and those keys in `config.yaml` go back to the shared defaults, so **Update** can pull. Pick the playback device you actually want to hear. The list is Windows' speech outputs (SAPI), for example speakers, a headset earphone, a digital output, or a monitor. A headset often shows up twice — once for game audio and once for chat — and the Windows default is not always the one that makes a sound. Choose the endpoint, then press **Test voice**. Microphones are not listed, and Suit-O still refuses a microphone or virtual-cable name if one is typed into `speech.output_device`. **Update** runs `git pull --ff-only` in this checkout. If a requirements file changed, Suit-O reinstalls it and reloads. If you have local edits git would overwrite, the window says so and leaves the running copy alone. **Check for updates when Suit-O opens** does that same check at startup.
 
-   **Voice.** Fine-tune the voice used for every in-game line. The picker lists installed Windows SAPI voices (blank in the config, shown as "Engine default", keeps the engine's own voice) and any voice you built on the Voice Training tab (`Clone: name`). Sliders set speaking rate (words per minute), pitch (-10 to 10), volume (the same slider as on the Listener tab), and an optional pause before each line (milliseconds). Emphasis is None, Mild, or Strong. **Preview** speaks the text box through the output device selected on the Listener tab, including slider positions you have not saved yet. **Save** writes the settings and uses them for every in-game line. Saving a cloned voice sets `speech.backend` to `clone`. **Reset to defaults** puts back rate 185, pitch 0, volume 0.85, no pause, no emphasis, and the engine default voice, and saves that immediately. Closing the window saves the last saved tuning, not an unsaved draft. Volume is the exception: moving either volume slider saves it.
+   **Voice.** Fine-tune the voice used for every in-game line. The picker lists installed Windows SAPI voices (blank in the config, shown as "Engine default", keeps the engine's own voice) and any voice you built on the Voice Training tab (`Clone: name`). Sliders set speaking rate (words per minute), pitch (-10 to 10), volume (the same slider as on the Listener tab), and an optional pause before each line (milliseconds). Emphasis is None, Mild, or Strong. **Preview** speaks the text box through the output device selected on the Listener tab, including slider positions you have not saved yet. **Save** writes the settings to `config.local.yaml` and uses them for every in-game line. Saving a cloned voice sets `speech.backend` to `clone`. **Reset to defaults** puts back rate 185, pitch 0, volume 0.85, no pause, no emphasis, and the engine default voice, and saves that immediately. Closing the window saves the last saved tuning, not an unsaved draft. Volume is the exception: moving either volume slider saves it.
 
    **Voice Training.** Record a short script in your own voice (or someone who agreed), then press **Build voice**. That stores a profile under `voices/` (gitignored) and adds it to the Voice tab. See [Voice cloning](#voice-cloning) below. The tab tells you if the optional packages are missing, and whether synthesis will use NVIDIA CUDA or the CPU.
 
@@ -79,7 +80,7 @@ These steps assume Windows 10 or 11 and the default Steam library path. If CS2 i
 
    The log line `GSI endpoint ready at http://127.0.0.1:3000/` means it is waiting. Join a match. On a new round you should see a line in the log and hear it. Leaving `speech.output_device` blank uses the Windows default playback device. To target one device by name, set `output_device` to part of its playback name, such as `Headphones`. Use the speaker or headphone name, not the microphone name.
 
-Optional voice settings in `config.yaml`. These six are not tied to SAPI, so a future custom or cloned voice (a remote TTS server) can reuse the same panel and the same keys:
+Optional voice settings. Saving them from the window writes `config.local.yaml`; the same keys in `config.yaml` are the shared defaults. These six are not tied to SAPI, so a future custom or cloned voice (a remote TTS server) can reuse the same panel and the same keys:
 
 - `speech.voice`: part of an installed voice name (`David`, `Zira`, ...), or the name of a cloned profile when `speech.backend` is `clone`. Blank keeps the engine default.
 - `speech.rate`: words per minute, 80 to 400 (default 185).
@@ -128,9 +129,9 @@ After you build or save the cloned voice, Suit-O speaks it through the `clone` b
 
 ## Mute
 
-- In the desktop window, press **Mute**. Press **Unmute** to hear lines again. The choice is saved in `config.yaml`.
+- In the desktop window, press **Mute**. Press **Unmute** to hear lines again. The choice is saved in `config.local.yaml`.
 - In the console listener, type `m` and press Enter. Type `m` again to unmute. Type `q` and Enter to quit. Console mute lasts for that run; it does not rewrite `config.yaml`.
-- Or set `mute: true` in `config.yaml` before starting.
+- Or set `mute: true` in `config.local.yaml` before starting. A `mute` value still sitting in `config.yaml` is moved to the local file on the next launch.
 - Or from another terminal: `Invoke-WebRequest -Method POST http://127.0.0.1:3000/mute`
 - Status: `Invoke-WebRequest http://127.0.0.1:3000/status`
 
@@ -171,7 +172,7 @@ While you hold a smoke grenade, Suit-O can show one of your lineup screenshots i
 
 Run CS2 in **borderless windowed** or **windowed** mode so a normal desktop window can sit on top of the game. Fullscreen exclusive mode will cover it. Some third-party leagues and anti-cheats, including FACEIT, restrict overlays. This one is meant for Valve matchmaking and casual play.
 
-The card hides when the smoke is not in your hand, when you are dead, or when the round is over. A hotkey can hide it even while you are holding a smoke, and show it again the next time the trigger matches. Two more hotkeys cycle to the next or previous lineup. The defaults are `ctrl+shift+right`, `ctrl+shift+left`, and `ctrl+shift+h`. They are stored in `config.yaml` under `lineups` and must not be the same chord as `ptt.cs2_voice_key` or the reserved `ptt.keybind`. On Windows they are registered with the system so they work while CS2 is focused. They only change this overlay. They are not forwarded to the game. On Windows the overlay is click-through, so mouse clicks land on the game underneath.
+The card hides when the smoke is not in your hand, when you are dead, or when the round is over. A hotkey can hide it even while you are holding a smoke, and show it again the next time the trigger matches. Two more hotkeys cycle to the next or previous lineup. The defaults are `ctrl+shift+right`, `ctrl+shift+left`, and `ctrl+shift+h`. Saving them writes `config.local.yaml`. They must not be the same chord as `ptt.cs2_voice_key` or the reserved `ptt.keybind`. On Windows they are registered with the system so they work while CS2 is focused. They only change this overlay. They are not forwarded to the game. On Windows the overlay is click-through, so mouse clicks land on the game underneath.
 
 No lineup images are shipped. Add your own PNGs:
 
@@ -182,6 +183,14 @@ lineups/<map>/<t|ct>/order.txt     optional order, one filename per line
 ```
 
 Use the CS2 map id, such as `de_dust2` or `de_mirage`. A short folder name (`dust2`) is also accepted. `t` and `ct` are the two sides. Empty folders for the current premier maps are already there. The **Lineups** tab can import PNGs for a map and side, rename them, set a caption, reorder them, and preview them. It also saves the card width, opacity, corner, and monitor. Images you add stay on your machine; png and caption files under `lineups/` are gitignored.
+
+## Updates without closing the window
+
+Leave the desktop window open. Suit-O watches `config.yaml`, `config.local.yaml`, `lines/`, `voices/`, and `lineups/`. A valid change applies immediately: volume, the output device, voice tuning, mute, stock lines, cloned-voice files, and lineup images. If a file is invalid, the previous settings stay in effect and the error is written in the event log.
+
+A change under `suit_o/` (for example after **Update** or a `git pull`) restarts the window in place. Several files saved together count as one restart. Suit-O stops the game-state listener and frees port 3000, then opens again on the same tab with the same window position. Mute is kept. A short **Reloaded** notice confirms it.
+
+**Update** on the Listener tab runs `git pull --ff-only`. When `requirements.txt`, `requirements-dev.txt`, or `requirements-voice.txt` changed, it runs `python -m pip install -r` on those files, then restarts. If the pull is already current, nothing restarts. If local edits would be overwritten, or the histories have diverged, the status line says what to do and Suit-O keeps running. Personal settings in `config.local.yaml` do not block the pull.
 
 ## Remote speech later
 
@@ -203,7 +212,11 @@ Use the CS2 map id, such as `de_dust2` or `de_mirage`. A short folder name (`dus
 
 **It talked, then went quiet.** Cooldowns are doing that on purpose. Death, bomb, and multi-kill lines can still break through. Lower `cooldowns` or `rate_limit.min_interval_seconds` if you want it chattier.
 
-**Startup says the output device looks like a microphone or cable.** `speech.output_device` matched a mic, stereo mix, or virtual-cable name. Clear it, or set a headphone/speaker name. Suit-O will not play into a device that usually feeds voice chat.
+**Startup says the output device looks like a microphone or cable.** `speech.output_device` matched a mic, stereo mix, or virtual-cable name. Clear it in `config.local.yaml` (or in `config.yaml` if you have not launched since editing it), or set a headphone/speaker name. Suit-O will not play into a device that usually feeds voice chat.
+
+**Update says a file has local edits.** Those edits are in a tracked file, usually `config.yaml`. Suit-O settings belong in `config.local.yaml`. The first launch moves output device, volume, mute, voice tuning, and lineup settings there. Commit or stash anything else, then press **Update** again.
+
+**The window says it kept the previous settings.** The file you just saved does not parse. Suit-O is still using the last good config and lines. The log line is the reason.
 
 **Startup says the push-to-talk key matches the CS2 voice key.** Change `ptt.keybind` or clear it. Leave `ptt.cs2_voice_key` set to the key you actually use in game so the check stays honest. A lineup hotkey that uses that same chord is refused for the same reason.
 

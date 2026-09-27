@@ -96,6 +96,13 @@ class LineupConfig:
 
 
 @dataclass
+class UpdateConfig:
+    """Optional ``git pull`` when the desktop window opens. Off unless set."""
+
+    check_on_launch: bool = False
+
+
+@dataclass
 class Thresholds:
     low_health: int
     full_buy_money_ct: int
@@ -124,6 +131,7 @@ class Config:
     ptt: PttConfig
     lineups: LineupConfig
     lines_path: Path
+    updates: UpdateConfig = field(default_factory=UpdateConfig)
     warnings: list[str] = field(default_factory=list)
 
     def priority_for(self, event_type: EventType) -> int:
@@ -152,14 +160,50 @@ def is_disallowed_output_device(name: str) -> bool:
 
 
 def load_config(path: Path | None = None) -> Config:
+    """Load ``config.yaml``, then layer ``config.local.yaml`` from the same folder.
+
+    The local file is optional and gitignored. Its keys win. This does not
+    migrate or rewrite either file; startup does that once, separately.
+    """
+
     config_path = Path(path) if path is not None else DEFAULT_CONFIG_PATH
-    if not config_path.is_file():
-        raise ConfigError(f"Config file not found: {config_path}")
-    with config_path.open("r", encoding="utf-8") as handle:
-        raw = yaml.safe_load(handle)
-    if not isinstance(raw, dict):
-        raise ConfigError(f"{config_path} must contain a YAML mapping")
+    raw = read_yaml_mapping(config_path)
+    from suit_o.local_config import local_config_path
+
+    local_path = local_config_path(config_path)
+    if local_path.is_file():
+        raw = deep_merge(raw, read_yaml_mapping(local_path, empty_ok=True))
     return parse_config(raw, config_path=config_path)
+
+
+def read_yaml_mapping(path: Path, *, empty_ok: bool = False) -> dict:
+    """Read one YAML file as a mapping. A syntax error is a ConfigError."""
+
+    if not path.is_file():
+        raise ConfigError(f"Config file not found: {path}")
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            raw = yaml.safe_load(handle)
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"{path.name} is not valid YAML: {exc}") from exc
+    if raw is None and empty_ok:
+        return {}
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{path.name} must contain a YAML mapping")
+    return raw
+
+
+def deep_merge(base: dict, overlay: dict) -> dict:
+    """Return a new mapping. Nested mappings merge. Overlay values win."""
+
+    merged = dict(base)
+    for key, value in overlay.items():
+        current = merged.get(key)
+        if isinstance(current, dict) and isinstance(value, dict):
+            merged[key] = deep_merge(current, value)
+        else:
+            merged[key] = value
+    return merged
 
 
 def parse_config(raw: dict, *, config_path: Path | None = None) -> Config:
@@ -337,6 +381,13 @@ def parse_config(raw: dict, *, config_path: Path | None = None) -> Config:
         ptt_key=keybind,
     )
 
+    updates_raw = raw.get("updates") or {}
+    if updates_raw and not isinstance(updates_raw, dict):
+        raise ConfigError("updates must be a mapping")
+    check_on_launch = updates_raw.get("check_on_launch", False)
+    if not isinstance(check_on_launch, bool):
+        raise ConfigError("updates.check_on_launch must be true or false")
+
     lines_value = raw.get("lines_file", "lines/lines.yaml")
     lines_path = Path(str(lines_value))
     if not lines_path.is_absolute():
@@ -371,6 +422,7 @@ def parse_config(raw: dict, *, config_path: Path | None = None) -> Config:
         ptt=PttConfig(keybind=keybind.strip(), cs2_voice_key=voice_key.strip()),
         lineups=lineups,
         lines_path=lines_path,
+        updates=UpdateConfig(check_on_launch=check_on_launch),
         warnings=warnings,
     )
 

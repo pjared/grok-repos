@@ -7,6 +7,8 @@ import logging
 import sys
 import threading
 import time
+
+import yaml
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -18,9 +20,10 @@ from suit_o.events.detector import EventDetector
 from suit_o.gsi.parse import parse_payload
 from suit_o.gsi.server import GsiServer
 from suit_o.lines.provider import LineProvider, YamlLineProvider
+from suit_o.local_config import store_personal_settings
 from suit_o.models import GameEvent, Utterance
 from suit_o.lineups.deck import DeckView, LineupDeck
-from suit_o.preferences import clamp_volume, save_lineup_settings, save_user_settings
+from suit_o.preferences import clamp_volume
 from suit_o.speech.backend import SpeechBackend
 from suit_o.speech.devices import (
     list_output_device_names,
@@ -82,6 +85,16 @@ class ListenerSnapshot:
     activity: tuple[Activity, ...]
 
 
+@dataclass(frozen=True)
+class ReloadResult:
+    """Outcome of applying config and content without restarting the process."""
+
+    ok: bool
+    message: str
+    restart: bool = False
+    applied: bool = False
+
+
 class SuitOApp:
     def __init__(
         self,
@@ -137,6 +150,7 @@ class SuitOApp:
         self._lines_stamp: str | None = None
         self._lines_checked = 0.0
         self._renderers: list[CloneSpeechBackend] = []
+        self._on_settings_saved: Callable[[], None] | None = None
 
     def start(self, *, console: bool = False) -> None:
         if self._started:
@@ -591,7 +605,7 @@ class SuitOApp:
             toggle_key = canonical_hotkey(hotkey_toggle)
         except HotkeyError as exc:
             raise ConfigError(str(exc)) from exc
-        save_lineup_settings(
+        store_personal_settings(
             self.config_path,
             enabled=enabled,
             width=width,
@@ -604,6 +618,7 @@ class SuitOApp:
             voice_key=self.config.ptt.cs2_voice_key,
             ptt_key=self.config.ptt.keybind,
         )
+        self._after_settings_saved()
         settings = self.config.lineups
         settings.enabled = enabled
         settings.width = width
@@ -616,15 +631,16 @@ class SuitOApp:
         self.lineups.set_enabled(enabled)
 
     def save_preferences(self) -> None:
-        """Write volume, mute, output device, and voice tuning to the config file.
+        """Write volume, mute, output device, and voice tuning to config.local.yaml.
 
-        This stores the live settings, not an unsaved draft on the voice panel.
+        ``config.yaml`` is left untouched. This stores the live settings, not
+        an unsaved draft on the voice panel.
         """
 
         if self.config_path is None:
             raise RuntimeError("Suit-O has no config file to update")
         speech = self.config.speech
-        save_user_settings(
+        store_personal_settings(
             self.config_path,
             volume=speech.volume,
             muted=self.muted,
@@ -636,6 +652,96 @@ class SuitOApp:
             emphasis=speech.emphasis,
             backend=speech.backend,
         )
+        self._after_settings_saved()
+
+    def save_update_preference(self, check_on_launch: bool) -> None:
+        """Remember whether the window should ``git pull`` when it opens."""
+
+        if self.config_path is None:
+            raise RuntimeError("Suit-O has no config file to update")
+        store_personal_settings(self.config_path, check_on_launch=bool(check_on_launch))
+        self.config.updates.check_on_launch = bool(check_on_launch)
+        self._after_settings_saved()
+
+    def reload_content(self) -> ReloadResult:
+        """Apply config, lines, voices, and lineups. Keep the previous ones if invalid.
+
+        A change to the listener address or token asks the window to restart,
+        because the port is already bound.
+        """
+
+        if self.config_path is None:
+            return ReloadResult(False, "Suit-O has no config file to reload")
+        from suit_o.config import load_config
+
+        try:
+            loaded = load_config(self.config_path)
+        except (ConfigError, OSError, ValueError, yaml.YAMLError) as exc:
+            message = f"Kept the previous settings. {exc}"
+            self.note(message)
+            return ReloadResult(False, message)
+        server = self.config.server
+        if (
+            loaded.server.host != server.host
+            or loaded.server.port != server.port
+            or loaded.server.token != server.token
+        ):
+            self.note("The listener address or token changed. Restarting.")
+            return ReloadResult(True, "The listener address or token changed.", restart=True)
+        try:
+            provider = YamlLineProvider.from_file(
+                loaded.lines_path,
+                cooldowns=loaded.cooldowns,
+                default_cooldown=loaded.default_cooldown,
+                min_interval=loaded.min_interval,
+                preempt_min_priority=loaded.preempt_min_priority,
+                muted=loaded.mute,
+            )
+        except (OSError, ValueError, yaml.YAMLError) as exc:
+            message = f"Kept the previous lines. {exc}"
+            self.note(message)
+            return ReloadResult(False, message)
+
+        previous_config = self.config
+        previous_lines = self.lines
+        previous_detector = self.detector
+        previous_tuning = self.current_tuning()
+        previous_backend = previous_config.speech.backend
+        previous_voice = previous_config.speech.voice
+        loaded.speech.voices_dir = str(self.voices_dir)
+        try:
+            self.config = loaded
+            self.lines = provider
+            self.detector = EventDetector(loaded.thresholds)
+            self.speech.preempt_min_priority = loaded.preempt_min_priority
+            self.speech.set_muted(loaded.mute)
+            self.speech.set_volume(loaded.speech.volume)
+            self.speech.set_output_device(loaded.speech.output_device)
+            self.speech.apply_tuning(self.current_tuning())
+            self.lineups.set_enabled(loaded.lineups.enabled)
+            tuning_changed = self.current_tuning() != previous_tuning
+            backend_changed = (
+                loaded.speech.backend != previous_backend or loaded.speech.voice != previous_voice
+            )
+            if backend_changed:
+                self._install_backend()
+            elif tuning_changed and isinstance(self.backend, CloneSpeechBackend):
+                self._prerender_clone(self.backend)
+            self.poll_stock_lines()
+        except (ConfigError, OSError, ValueError) as exc:
+            self.config = previous_config
+            self.lines = previous_lines
+            self.detector = previous_detector
+            message = f"Kept the previous settings. {exc}"
+            self.note(message)
+            return ReloadResult(False, message)
+        self.note("Reloaded settings.")
+        return ReloadResult(True, "Reloaded settings.", applied=True)
+
+    def _after_settings_saved(self) -> None:
+        hook = self._on_settings_saved
+        if hook is not None:
+            hook()
 
     def activity(self) -> tuple[Activity, ...]:
         with self._activity_lock:

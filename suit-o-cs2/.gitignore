@@ -11,3 +11,5 @@ lineups/**/*.jpeg
 lineups/**/*.webp
 lineups/**/*.txt
 lineups/**/order.txt
+config.local.yaml
+.suit-o-restart.json

@@ -8,13 +8,28 @@ display.
 from __future__ import annotations
 
 import logging
+import os
+import re
+import sys
+import threading
+import time
 from contextlib import contextmanager
 
 import tkinter as tk
 from tkinter import messagebox, ttk
 
 from suit_o.app import SuitOApp
-from suit_o.config import ConfigError
+from suit_o.config import PROJECT_ROOT, ConfigError
+from suit_o.local_config import local_config_path
+from suit_o.reload import (
+    FileWatcher,
+    RestartState,
+    choose_reload,
+    consume_restart_state,
+    gui_restart_argv,
+    write_restart_state,
+)
+from suit_o.update import install_requirements, run_git_update
 from suit_o.gui.status import (
     device_menu_labels,
     format_activity,
@@ -46,6 +61,15 @@ class SuitOWindow:
         self._save_error_shown = False
         self._last_activity_seq = 0
         self._device_names: list[str] = []
+        self._updating = False
+        self._notice_job: str | None = None
+        config_path = app.config_path or (PROJECT_ROOT / "config.yaml")
+        self._watcher = FileWatcher(
+            PROJECT_ROOT,
+            config_path=config_path,
+            lines_path=app.config.lines_path,
+        )
+        app._on_settings_saved = self._ignore_own_save
 
         self.root = tk.Tk()
         self.root.title("Suit-O")
@@ -59,9 +83,11 @@ class SuitOWindow:
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(2, weight=1)
 
-        ttk.Label(frame, text="Suit-O", font=("TkDefaultFont", 16, "bold")).grid(
-            row=0, column=0, sticky="w"
-        )
+        header = ttk.Frame(frame)
+        header.grid(row=0, column=0, sticky="ew")
+        ttk.Label(header, text="Suit-O", font=("TkDefaultFont", 16, "bold")).pack(side="left")
+        self.notice = ttk.Label(header, text="", foreground="#0b6e4f")
+        self.notice.pack(side="left", padx=(12, 0))
         ttk.Label(frame, text="Local CS2 companion").grid(row=1, column=0, sticky="w", pady=(0, 8))
 
         self.notebook = ttk.Notebook(frame)
@@ -159,8 +185,19 @@ class SuitOWindow:
         ttk.Button(buttons, text="Refresh devices", command=self._reload_devices).grid(
             row=0, column=1, sticky="w", padx=(8, 0)
         )
+        self.update_button = ttk.Button(buttons, text="Update", command=self._update)
+        self.update_button.grid(row=0, column=2, sticky="w", padx=(8, 0))
+        self.update_status = ttk.Label(buttons, text="")
+        self.update_status.grid(row=0, column=3, sticky="w", padx=(8, 0))
+        self.check_updates = tk.BooleanVar(value=app.config.updates.check_on_launch)
+        ttk.Checkbutton(
+            buttons,
+            text="Check for updates when Suit-O opens",
+            variable=self.check_updates,
+            command=self._save_update_pref,
+        ).grid(row=1, column=0, columnspan=4, sticky="w", pady=(8, 0))
         ttk.Label(buttons, text="Recent events").grid(
-            row=1, column=0, columnspan=2, sticky="w", pady=(10, 4)
+            row=2, column=0, columnspan=4, sticky="w", pady=(10, 4)
         )
 
         log_frame = ttk.Frame(frame)
@@ -191,7 +228,10 @@ class SuitOWindow:
         self.lineups_panel.set_monitors([item.label for item in monitors_for(self.root)])
         self.overlay = LineupOverlay(self.root, self.app, lambda: monitors_for(self.root))
         self._bind_lineup_hotkeys()
+        self._restore_restart_state()
         self._refresh()
+        if self.app.config.updates.check_on_launch:
+            self._update()
         self.root.mainloop()
 
     def _bind_lineup_hotkeys(self) -> None:
@@ -301,11 +341,153 @@ class SuitOWindow:
         if self._closed:
             return
         try:
+            self._poll_watcher()
+            if self._closed:
+                return
             self.app.poll_stock_lines()
             self._paint(self.app.snapshot())
         except Exception:
             logger.exception("Could not refresh the Suit-O window")
-        self.root.after(400, self._refresh)
+        if not self._closed:
+            self.root.after(400, self._refresh)
+
+    def _ignore_own_save(self) -> None:
+        if self.app.config_path is None:
+            return
+        self._watcher.ignore(local_config_path(self.app.config_path), time.monotonic() + 2.0)
+
+    def _poll_watcher(self) -> None:
+        kinds = self._watcher.scan(time.monotonic())
+        if not kinds:
+            return
+        action = choose_reload(kinds)
+        if action == "restart":
+            self._restart_in_place("Reloaded")
+            return
+        if action != "reload":
+            return
+        result = self.app.reload_content()
+        if result.restart:
+            self._restart_in_place("Reloaded")
+            return
+        if not result.applied:
+            return
+        self._reload_devices()
+        self.voice_panel.show(self.app.current_tuning())
+        self.lineups_panel.sync_from_app()
+        self.lineups_panel.reload()
+        self._bind_lineup_hotkeys()
+        self.check_updates.set(self.app.config.updates.check_on_launch)
+        self._show_notice("Reloaded")
+
+    def _restore_restart_state(self) -> None:
+        if self.app.config_path is None:
+            return
+        state = consume_restart_state(self.app.config_path)
+        if state is None:
+            return
+        self.root.geometry(f"{state.width}x{state.height}{state.x:+d}{state.y:+d}")
+        try:
+            self.notebook.select(state.tab)
+        except tk.TclError:
+            logger.debug("Could not restore the notebook tab", exc_info=True)
+        notice = state.notice or "Reloaded"
+        self._show_notice(notice)
+        self.app.note(notice)
+
+    def _show_notice(self, text: str) -> None:
+        self.notice.configure(text=text)
+        if self._notice_job is not None:
+            self.root.after_cancel(self._notice_job)
+        self._notice_job = self.root.after(4000, self._clear_notice)
+
+    def _clear_notice(self) -> None:
+        self._notice_job = None
+        if not self._closed:
+            self.notice.configure(text="")
+
+    def _save_update_pref(self) -> None:
+        try:
+            self.app.save_update_preference(bool(self.check_updates.get()))
+        except Exception as exc:
+            messagebox.showerror("Suit-O", str(exc))
+
+    def _update(self) -> None:
+        if self._updating or self._closed:
+            return
+        self._updating = True
+        self.update_button.state(["disabled"])
+        self.update_status.configure(text="Checking for updates...")
+        threading.Thread(target=self._update_worker, name="suit-o-update", daemon=True).start()
+
+    def _update_worker(self) -> None:
+        try:
+            outcome = run_git_update(PROJECT_ROOT)
+            pip_error = None
+            if outcome.ok and outcome.changed and outcome.requirements:
+                pip_error = install_requirements(outcome.requirements)
+        except Exception as exc:
+            outcome = None
+            pip_error = f"Update failed. {exc}"
+        if self._closed:
+            return
+        self.root.after(0, lambda: self._finish_update(outcome, pip_error))
+
+    def _finish_update(self, outcome, pip_error: str | None) -> None:
+        self._updating = False
+        if self._closed:
+            return
+        self.update_button.state(["!disabled"])
+        if pip_error:
+            self.update_status.configure(text=pip_error)
+            self.app.note(pip_error)
+            return
+        if outcome is None:
+            return
+        self.update_status.configure(text=outcome.message)
+        self.app.note(outcome.message)
+        if outcome.ok and outcome.changed:
+            self._restart_in_place("Reloaded")
+
+    def _restart_in_place(self, notice: str) -> None:
+        """Stop the listener, free its port, and replace this process."""
+
+        if self._closed:
+            return
+        try:
+            self.app.save_preferences()
+        except Exception as exc:
+            logger.exception("Could not save Suit-O settings before reload")
+            messagebox.showerror("Suit-O", f"Could not save settings.\n{exc}")
+            return
+        self._closed = True
+        if self._save_job is not None:
+            self.root.after_cancel(self._save_job)
+            self._save_job = None
+        if self.app.config_path is not None:
+            width, height, x, y = _parse_geometry(self.root.geometry())
+            try:
+                tab = int(self.notebook.index(self.notebook.select()))
+            except tk.TclError:
+                tab = 0
+            write_restart_state(
+                self.app.config_path,
+                RestartState(x=x, y=y, width=width, height=height, tab=tab, notice=notice),
+            )
+        self.hotkeys.stop()
+        if self.overlay is not None:
+            self.overlay.close()
+        self.app.stop()
+        argv = gui_restart_argv(self.app.config_path)
+        try:
+            self.root.destroy()
+        except tk.TclError:
+            pass
+        try:
+            os.execv(sys.executable, argv)
+        except OSError as exc:
+            logger.exception("Could not relaunch Suit-O")
+            _report_relaunch_failure(str(exc))
 
     def _paint(self, shot) -> None:
         listener, listener_tone = format_listener(shot.listening, shot.host, shot.port)
@@ -364,3 +546,21 @@ class SuitOWindow:
             yield
         finally:
             self._syncing_volume = False
+
+
+def _parse_geometry(spec: str) -> tuple[int, int, int, int]:
+    match = re.match(r"(\d+)x(\d+)([+-]\d+)([+-]\d+)", spec)
+    if match is None:
+        return (860, 900, 0, 0)
+    width, height, x, y = match.groups()
+    return (int(width), int(height), int(x), int(y))
+
+
+def _report_relaunch_failure(message: str) -> None:
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showerror("Suit-O", f"Suit-O could not reload.\n{message}")
+        root.destroy()
+    except Exception:
+        logger.error("Suit-O could not reload: %s", message)
