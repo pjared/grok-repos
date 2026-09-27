@@ -18,6 +18,7 @@ from suit_o.lineups.pack import (
     import_pack,
     load_pack_file,
     map_counts,
+    note_extra_fields,
     pack_cards,
     parse_pack,
 )
@@ -72,7 +73,23 @@ def test_schema_and_example_describe_version_one_without_images():
         "status",
     ]
     assert set(example["lineups"][0]) == set(required)
+    optional = schema["$defs"]["lineup"]["properties"]
+    assert optional["notes"] == {"type": "string"}
+    assert optional["source_url"] == {"type": "string"}
+    assert optional["source_timestamp"] == {"type": "string"}
+    assert optional["second_source_url"] == {"type": "string"}
+    assert optional["verified_by_second_source"] == {"type": "boolean"}
+    for key in (
+        "notes",
+        "source_url",
+        "source_timestamp",
+        "second_source_url",
+        "verified_by_second_source",
+    ):
+        assert key not in required
     pack = parse_pack(example)
+    assert pack.unknown_fields == ()
+    assert pack.as_dict() == example
     assert pack.version == 1
     assert pack.maps == ("mirage",)
     lineup = pack.lineups[0]
@@ -92,15 +109,6 @@ def test_parse_rejects_a_bad_version_side_duplicate_or_escaping_path():
         assert "version" in str(exc)
     else:
         raise AssertionError("version 2 was accepted")
-
-    example = json.loads(EXAMPLE.read_text(encoding="utf-8"))
-    example["extra"] = True
-    try:
-        parse_pack(example)
-    except PackError as exc:
-        assert "unexpected" in str(exc)
-    else:
-        raise AssertionError("an extra pack field was accepted")
 
     bad_side = json.loads(EXAMPLE.read_text(encoding="utf-8"))
     bad_side["lineups"][0]["side"] = "t"
@@ -356,3 +364,188 @@ def test_filters_and_map_counts_follow_the_pack_document():
     ]
     assert filter_lineups(pack, map_name="ancient") == []
     assert len(filter_lineups(pack)) == 5
+
+
+def test_unknown_fields_are_kept_and_logged_once(tmp_path: Path):
+    first = _row(
+        notes="Stand on the box.",
+        source_url="https://example.com/window",
+        source_timestamp="1:05",
+        second_source_url="https://example.com/second",
+        verified_by_second_source=True,
+        editor="ada",
+    )
+    second = _row(
+        id="mirage-ct-smoke-connector",
+        side="CT",
+        name="Connector",
+        stand="CT spawn",
+        aim="Connector",
+        stand_image="images/connector-stand.png",
+        aim_image="images/connector-aim.png",
+        notes="",
+        verified_by_second_source=False,
+        editor="ada",
+        future_flag={"ok": True},
+    )
+    document = {
+        "version": 1,
+        "maps": ["mirage"],
+        "lineups": [first, second],
+        "generator": "mirage-pack",
+    }
+    pack = parse_pack(document)
+    assert pack.unknown_fields == ("editor", "future_flag", "generator")
+    lineup = pack.lineups[0]
+    assert lineup.notes == "Stand on the box."
+    assert lineup.source_url == "https://example.com/window"
+    assert lineup.source_timestamp == "1:05"
+    assert lineup.second_source_url == "https://example.com/second"
+    assert lineup.verified_by_second_source is True
+    assert lineup.extra == {"editor": "ada"}
+    assert pack.lineups[1].notes == ""
+    assert pack.lineups[1].verified_by_second_source is False
+    assert pack.lineups[1].extra["future_flag"] == {"ok": True}
+    assert pack.extra == {"generator": "mirage-pack"}
+    assert parse_pack(pack.as_dict()).as_dict() == pack.as_dict()
+
+    messages: list[str] = []
+    seen: set[str] = set()
+    note_extra_fields(pack.unknown_fields, messages.append, seen=seen)
+    note_extra_fields(pack.unknown_fields, messages.append, seen=seen)
+    note_extra_fields(("editor", "newer"), messages.append, seen=seen)
+    assert messages == [
+        "lineups: kept extra fields: editor, future_flag, generator",
+        "lineups: kept extra fields: newer",
+    ]
+
+    missing = _row()
+    del missing["aim"]
+    try:
+        parse_pack({"version": 1, "maps": ["mirage"], "lineups": [missing], "generator": "x"})
+    except PackError as exc:
+        assert "missing" in str(exc)
+    else:
+        raise AssertionError("a lineup missing aim was accepted")
+
+    bad_notes = _row(notes=3)
+    try:
+        parse_pack({"version": 1, "maps": ["mirage"], "lineups": [bad_notes]})
+    except PackError as exc:
+        assert "notes" in str(exc)
+    else:
+        raise AssertionError("a numeric notes field was accepted")
+
+    bad_flag = _row(verified_by_second_source="yes")
+    try:
+        parse_pack({"version": 1, "maps": ["mirage"], "lineups": [bad_flag]})
+    except PackError as exc:
+        assert "verified_by_second_source" in str(exc)
+    else:
+        raise AssertionError("a string flag was accepted")
+
+    source = tmp_path / "pack"
+    _png(source / "images" / "window-stand.png")
+    _png(source / "images" / "window-aim.png")
+    _png(source / "images" / "connector-stand.png")
+    _png(source / "images" / "connector-aim.png")
+    (source / "lineups.json").write_text(json.dumps(document), encoding="utf-8")
+    library = tmp_path / "lineup-data"
+    imported = import_pack(source, library)
+    assert imported.unknown_fields == ("editor", "future_flag", "generator")
+    saved = json.loads((library / "lineups.json").read_text(encoding="utf-8"))
+    assert saved["generator"] == "mirage-pack"
+    assert saved["lineups"][0]["notes"] == "Stand on the box."
+    assert saved["lineups"][0]["source_url"] == "https://example.com/window"
+    assert saved["lineups"][0]["editor"] == "ada"
+    assert saved["lineups"][1]["notes"] == ""
+    assert saved["lineups"][1]["verified_by_second_source"] is False
+    assert saved["lineups"][1]["future_flag"] == {"ok": True}
+
+    follow = {
+        "version": 1,
+        "maps": ["mirage"],
+        "lineups": [_row(id="mirage-t-flash-ramp", grenade="flash", name="Ramp flash")],
+        "reviewed": True,
+    }
+    follow_dir = tmp_path / "follow"
+    _png(follow_dir / "images" / "window-stand.png")
+    _png(follow_dir / "images" / "window-aim.png")
+    (follow_dir / "lineups.json").write_text(json.dumps(follow), encoding="utf-8")
+    import_pack(follow_dir, library)
+    merged = json.loads((library / "lineups.json").read_text(encoding="utf-8"))
+    assert merged["generator"] == "mirage-pack"
+    assert merged["reviewed"] is True
+    by_id = {item["id"]: item for item in merged["lineups"]}
+    assert by_id["mirage-t-smoke-window-example"]["source_timestamp"] == "1:05"
+    assert by_id["mirage-t-flash-ramp"]["grenade"] == "flash"
+    cards = pack_cards(library, "mirage", "T")
+    window = next(card for card in cards if card.lineup_id == "mirage-t-smoke-window-example")
+    assert window.notes == "Stand on the box."
+    assert window.source_url == "https://example.com/window"
+
+
+def test_detail_view_shows_notes_and_the_source_link(tmp_path: Path):
+    import tkinter as tk
+    from tkinter import ttk
+
+    from suit_o.config import LineupConfig
+    from suit_o.gui.lineups import LineupsPanel
+
+    source = tmp_path / "pack"
+    _png(source / "images" / "window-stand.png")
+    _png(source / "images" / "window-aim.png")
+    document = {
+        "version": 1,
+        "maps": ["mirage"],
+        "lineups": [
+            _row(
+                notes="Stand on the box.",
+                source_url="https://example.com/window",
+                editor="ada",
+            ),
+            _row(
+                id="mirage-t-flash-ramp",
+                grenade="flash",
+                name="Ramp flash",
+                editor="ada",
+                notes="Throw from ramp.",
+                source_url="https://example.com/flash",
+            ),
+        ],
+        "generator": "mirage-pack",
+    }
+    (source / "lineups.json").write_text(json.dumps(document), encoding="utf-8")
+
+    class _Config:
+        lineups = LineupConfig()
+
+    class _App:
+        def __init__(self) -> None:
+            self.config = _Config()
+            self.pack_dir = tmp_path / "lineup-data"
+            self.lineups_dir = tmp_path / "lineups"
+            self.messages: list[str] = []
+
+        def note(self, message: str) -> None:
+            self.messages.append(message)
+
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        app = _App()
+        panel = LineupsPanel(ttk.Frame(root), app, on_saved=lambda: None)
+        panel.import_pack_from(source)
+        root.update_idletasks()
+        assert app.messages == ["lineups: kept extra fields: editor, generator"]
+        assert panel.notes_label.cget("text") == "Stand on the box."
+        assert panel.source_link.cget("text") == "https://example.com/window"
+        assert panel._source_url == "https://example.com/window"
+        panel.cards.selection_set("1")
+        panel._show_selected()
+        assert panel.notes_label.cget("text") == "Throw from ramp."
+        assert panel.source_link.cget("text") == "https://example.com/flash"
+        panel.import_pack_from(source)
+        assert app.messages == ["lineups: kept extra fields: editor, generator"]
+    finally:
+        root.destroy()

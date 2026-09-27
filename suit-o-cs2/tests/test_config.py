@@ -15,6 +15,7 @@ from suit_o.config import (
     normalize_keybind,
     parse_config,
 )
+from suit_o.local_config import local_config_path, store_personal_settings
 from suit_o.models import EventType
 
 
@@ -40,7 +41,29 @@ def test_shipped_config_loads_and_warns_about_the_sample_token():
     assert any("sample value" in warning for warning in config.warnings)
 
 
-def test_gsi_cfg_points_at_the_local_endpoint_and_token():
+def test_tests_do_not_read_or_write_the_real_local_config(tmp_path: Path):
+    real = PROJECT_ROOT / "config.local.yaml"
+    before = real.read_bytes() if real.is_file() else None
+    sink = local_config_path(DEFAULT_CONFIG_PATH)
+    assert sink.resolve() != real.resolve()
+    assert not sink.is_file()
+    assert load_config(DEFAULT_CONFIG_PATH).speech.output_device == ""
+
+    copy = tmp_path / "nested" / "config.yaml"
+    copy.parent.mkdir()
+    copy.write_bytes(DEFAULT_CONFIG_PATH.read_bytes())
+    overlay = copy.with_name("config.local.yaml")
+    overlay.write_text('speech:\n  output_device: "Desk speakers"\n', encoding="utf-8")
+    assert local_config_path(copy) == overlay
+    assert load_config(copy).speech.output_device == "Desk speakers"
+    assert load_config(DEFAULT_CONFIG_PATH).speech.output_device == ""
+
+    store_personal_settings(DEFAULT_CONFIG_PATH, volume=0.41)
+    assert sink.is_file()
+    assert "0.41" in sink.read_text(encoding="utf-8")
+    after = real.read_bytes() if real.is_file() else None
+    assert after == before
+
     text = (PROJECT_ROOT / "gamestate_integration_suito.cfg").read_text(encoding="utf-8")
     config = load_config(DEFAULT_CONFIG_PATH)
     assert "http://127.0.0.1:3000" in text

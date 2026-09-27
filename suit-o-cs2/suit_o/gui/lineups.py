@@ -8,6 +8,7 @@ Copy setpos puts practice-server text on the clipboard. It is never sent to CS2.
 from __future__ import annotations
 
 import tkinter as tk
+import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
@@ -31,6 +32,7 @@ from suit_o.lineups.pack import (
     import_pack as copy_lineup_pack,
     load_pack_file,
     map_counts,
+    note_extra_fields,
     pack_cards,
 )
 from suit_o.lineups.place import CORNERS
@@ -60,6 +62,8 @@ class LineupsPanel:
         self._filling_maps = False
         self._photo: tk.PhotoImage | None = None
         self._aim_photo: tk.PhotoImage | None = None
+        self._source_url = ""
+        self._seen_extra_fields: set[str] = set()
         self._icons = grenade_icons(parent)
 
         parent.columnconfigure(0, weight=1)
@@ -144,6 +148,19 @@ class LineupsPanel:
             text="Practice server only. Never sent to CS2.",
             wraplength=260,
         ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(2, 0))
+        self.notes_label = ttk.Label(preview, text="", wraplength=280, justify="left")
+        self.notes_label.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+        self.source_link = tk.Label(
+            preview,
+            text="",
+            fg="#0b57d0",
+            cursor="hand2",
+            wraplength=280,
+            justify="left",
+            anchor="w",
+        )
+        self.source_link.grid(row=5, column=0, columnspan=2, sticky="ew")
+        self.source_link.bind("<Button-1>", self._open_source)
 
         buttons = ttk.Frame(parent)
         buttons.grid(row=3, column=0, sticky="w", pady=(6, 4))
@@ -374,6 +391,7 @@ class LineupsPanel:
         except PackError as exc:
             messagebox.showerror("Suit-O", str(exc))
             return
+        self._note_pack_extras(result.unknown_fields)
         self.reload_maps()
         self.status.configure(
             text=(
@@ -488,9 +506,11 @@ class LineupsPanel:
         if not path.is_file():
             return None
         try:
-            return load_pack_file(path)
+            pack = load_pack_file(path)
         except PackError:
             return None
+        self._note_pack_extras(pack.unknown_fields)
+        return pack
 
     def _current_map_key(self) -> str | None:
         if not self._map_keys:
@@ -582,6 +602,8 @@ class LineupsPanel:
             self._photo = _fit_photo(str(card.path), 180)
         except tk.TclError as exc:
             self._clear_preview(str(exc))
+            self._set_setpos(card.setpos)
+            self._set_notes(card.notes, card.source_url)
             return
         self.preview.configure(image=self._photo, text="")
         if card.aim_path is not None:
@@ -596,6 +618,7 @@ class LineupsPanel:
             self._aim_photo = None
             self.preview_aim.configure(image="", text="")
         self._set_setpos(card.setpos)
+        self._set_notes(card.notes, card.source_url)
         if card.setpos:
             self.copy_button.state(["!disabled"])
         else:
@@ -607,6 +630,7 @@ class LineupsPanel:
         self.preview.configure(image="", text=message)
         self.preview_aim.configure(image="", text="")
         self._set_setpos("")
+        self._set_notes("", "")
         self.copy_button.state(["disabled"])
 
     def _set_setpos(self, text: str) -> None:
@@ -615,6 +639,22 @@ class LineupsPanel:
         if text:
             self.setpos_box.insert("1.0", text)
         self.setpos_box.configure(state="disabled")
+
+    def _set_notes(self, notes: str, source_url: str) -> None:
+        self.notes_label.configure(text=notes)
+        url = source_url.strip()
+        self._source_url = url if url.startswith(("http://", "https://")) else ""
+        if url:
+            self.source_link.configure(text=url)
+        else:
+            self.source_link.configure(text="")
+
+    def _open_source(self, _event: object = None) -> None:
+        if self._source_url:
+            webbrowser.open(self._source_url)
+
+    def _note_pack_extras(self, names: tuple[str, ...]) -> None:
+        note_extra_fields(names, self.app.note, seen=self._seen_extra_fields)
 
     def _paint_captions(self) -> None:
         try:

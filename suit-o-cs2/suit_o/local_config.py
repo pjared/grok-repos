@@ -15,11 +15,13 @@ from pathlib import Path
 
 import yaml
 
-from suit_o.config import ConfigError, read_yaml_mapping
+from suit_o.config import PROJECT_ROOT, ConfigError, read_yaml_mapping
 
 logger = logging.getLogger(__name__)
 
 LOCAL_CONFIG_NAME = "config.local.yaml"
+# Tests point this at a throwaway file so they never touch the real overlay.
+_project_local_redirect: Path | None = None
 
 SPEECH_DEFAULTS = {
     "backend": "pyttsx3",
@@ -54,8 +56,31 @@ _HEADER = (
 )
 
 
+def redirect_project_local_config(path: Path | None) -> None:
+    """Send reads and writes of the shipped ``config.local.yaml`` to ``path``.
+
+    ``None`` restores the real file next to ``config.yaml``. The test suite
+    sets this so a headset saved on a developer machine cannot change results,
+    and so a test cannot overwrite that file.
+    """
+
+    global _project_local_redirect
+    _project_local_redirect = None if path is None else Path(path)
+
+
 def local_config_path(config_path: Path) -> Path:
-    return Path(config_path).with_name(LOCAL_CONFIG_NAME)
+    path = Path(config_path).with_name(LOCAL_CONFIG_NAME)
+    redirect = _project_local_redirect
+    if redirect is not None and _is_project_local(path):
+        return redirect
+    return path
+
+
+def _is_project_local(path: Path) -> bool:
+    try:
+        return path.resolve() == (PROJECT_ROOT / LOCAL_CONFIG_NAME).resolve()
+    except OSError:
+        return False
 
 
 def migrate_user_settings(config_path: Path) -> bool:

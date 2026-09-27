@@ -39,6 +39,8 @@ class LineupCard:
     name: str = ""
     map_name: str = ""
     side: str = ""
+    notes: str = ""
+    source_url: str = ""
 
     @property
     def filename(self) -> str:

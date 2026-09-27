@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/pjared/grok-repos/blob/main/suit-o-cs2/lineups/pack.schema.json",
   "title": "Suit-O lineup pack",
-  "description": "A folder or zip of lineups.json plus images. Images are not part of this repository. version 1.",
+  "description": "A folder or zip of lineups.json plus images. Images are not part of this repository. version 1. notes, source_url, source_timestamp, second_source_url, and verified_by_second_source are optional. The importer also keeps any other fields.",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "maps", "lineups"],
@@ -54,7 +54,12 @@
           "type": "string",
           "description": "Practice-server console text. Suit-O may copy it. It is never sent to CS2."
         },
-        "status": { "enum": ["draft", "verified"] }
+        "status": { "enum": ["draft", "verified"] },
+        "notes": { "type": "string" },
+        "source_url": { "type": "string" },
+        "source_timestamp": { "type": "string" },
+        "second_source_url": { "type": "string" },
+        "verified_by_second_source": { "type": "boolean" }
       }
     }
   }

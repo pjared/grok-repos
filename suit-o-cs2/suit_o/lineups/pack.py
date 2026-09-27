@@ -9,7 +9,8 @@ from __future__ import annotations
 import json
 import shutil
 import zipfile
-from dataclasses import dataclass
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from suit_o.lineups.library import LineupCard, map_folder_names
@@ -36,6 +37,15 @@ _REQUIRED = (
     "setpos",
     "status",
 )
+_OPTIONAL_STRINGS = (
+    "notes",
+    "source_url",
+    "source_timestamp",
+    "second_source_url",
+)
+_OPTIONAL_BOOL = "verified_by_second_source"
+_KNOWN_LINEUP = set(_REQUIRED) | set(_OPTIONAL_STRINGS) | {_OPTIONAL_BOOL}
+_KNOWN_PACK = frozenset({"version", "maps", "lineups"})
 
 
 class PackError(ValueError):
@@ -58,6 +68,13 @@ class PackLineup:
     aim_image: str
     setpos: str
     status: str
+    notes: str = ""
+    source_url: str = ""
+    source_timestamp: str = ""
+    second_source_url: str = ""
+    verified_by_second_source: bool | None = None
+    extra: dict = field(default_factory=dict)
+    optional_keys: frozenset[str] = frozenset()
 
     def caption(self) -> str:
         """Stand spot, aim spot, and throw type, for the overlay."""
@@ -69,7 +86,7 @@ class PackLineup:
         return base
 
     def as_dict(self) -> dict:
-        return {
+        payload = {
             "id": self.id,
             "map": self.map,
             "side": self.side,
@@ -85,6 +102,13 @@ class PackLineup:
             "setpos": self.setpos,
             "status": self.status,
         }
+        for key in _OPTIONAL_STRINGS:
+            if key in self.optional_keys:
+                payload[key] = getattr(self, key)
+        if _OPTIONAL_BOOL in self.optional_keys:
+            payload[_OPTIONAL_BOOL] = self.verified_by_second_source
+        payload.update(self.extra)
+        return payload
 
 
 @dataclass(frozen=True)
@@ -92,19 +116,43 @@ class LineupPack:
     version: int
     maps: tuple[str, ...]
     lineups: tuple[PackLineup, ...]
+    extra: dict = field(default_factory=dict)
+    unknown_fields: tuple[str, ...] = ()
 
     def as_dict(self) -> dict:
-        return {
+        payload = {
             "version": self.version,
             "maps": list(self.maps),
             "lineups": [item.as_dict() for item in self.lineups],
         }
+        payload.update(self.extra)
+        return payload
 
 
 @dataclass(frozen=True)
 class ImportResult:
     added: int
     replaced: int
+    unknown_fields: tuple[str, ...] = ()
+
+
+def note_extra_fields(
+    names: Sequence[str],
+    write: Callable[[str], None],
+    *,
+    seen: set[str],
+) -> None:
+    """Pass unknown field names to ``write`` once.
+
+    ``seen`` remembers names already reported, including across later packs
+    in the same window. Known optional fields are not included in ``names``.
+    """
+
+    fresh = [name for name in names if name not in seen]
+    if not fresh:
+        return
+    seen.update(fresh)
+    write("lineups: kept extra fields: " + ", ".join(fresh))
 
 
 def parse_pack(raw: object) -> LineupPack:
@@ -112,9 +160,6 @@ def parse_pack(raw: object) -> LineupPack:
 
     if not isinstance(raw, dict):
         raise PackError("lineups.json must be a JSON object")
-    extra = set(raw) - {"version", "maps", "lineups"}
-    if extra:
-        raise PackError("lineups.json has unexpected fields: " + ", ".join(sorted(extra)))
     version = raw.get("version")
     if version != PACK_VERSION:
         raise PackError(f"lineups.json version must be {PACK_VERSION}")
@@ -124,11 +169,21 @@ def parse_pack(raw: object) -> LineupPack:
     rows = raw.get("lineups")
     if not isinstance(rows, list):
         raise PackError("lineups.json lineups must be a list")
+    extra = {key: value for key, value in raw.items() if key not in _KNOWN_PACK}
+    unknown = set(extra)
     lineups: list[PackLineup] = []
     seen: set[str] = set()
     for index, row in enumerate(rows):
-        lineups.append(_parse_lineup(row, index=index, seen=seen))
-    return LineupPack(version=PACK_VERSION, maps=tuple(item.strip() for item in maps_raw), lineups=tuple(lineups))
+        lineup, names = _parse_lineup(row, index=index, seen=seen)
+        unknown.update(names)
+        lineups.append(lineup)
+    return LineupPack(
+        version=PACK_VERSION,
+        maps=tuple(item.strip() for item in maps_raw),
+        lineups=tuple(lineups),
+        extra=extra,
+        unknown_fields=tuple(sorted(unknown)),
+    )
 
 
 def load_pack_file(path: Path) -> LineupPack:
@@ -158,7 +213,10 @@ def import_pack(source: Path, library: Path) -> ImportResult:
     if source.is_file() and source.suffix.lower() == ".zip":
         return _import_zip(source, library)
     if source.is_dir():
-        return _merge_pack(validate_pack_dir(source), source if (source / PACK_FILENAME).is_file() else _find_pack_file(source).parent, library)
+        root = source if (source / PACK_FILENAME).is_file() else _find_pack_file(source).parent
+        pack = validate_pack_dir(source)
+        merged = _merge_pack(pack, root, library)
+        return ImportResult(merged.added, merged.replaced, pack.unknown_fields)
     raise PackError("Choose a lineup pack folder or a .zip file")
 
 
@@ -268,24 +326,24 @@ def pack_cards(
                 name=item.name,
                 map_name=item.map,
                 side=item.side,
+                notes=item.notes,
+                source_url=item.source_url,
             )
         )
     return cards
 
 
-def _parse_lineup(row: object, *, index: int, seen: set[str]) -> PackLineup:
+def _parse_lineup(row: object, *, index: int, seen: set[str]) -> tuple[PackLineup, set[str]]:
     label = f"lineups[{index}]"
     if not isinstance(row, dict):
         raise PackError(f"{label} must be an object")
-    extra = set(row) - set(_REQUIRED)
-    if extra:
-        raise PackError(f"{label} has unexpected fields: " + ", ".join(sorted(extra)))
     missing = [key for key in _REQUIRED if key not in row]
     if missing:
         raise PackError(f"{label} is missing {', '.join(missing)}")
     values = {key: row[key] for key in _REQUIRED}
     if any(not isinstance(value, str) for value in values.values()):
         raise PackError(f"{label} fields must be strings")
+    optional = _optional_fields(row, label)
     lineup_id = values["id"].strip()
     if not lineup_id:
         raise PackError(f"{label}.id is empty")
@@ -304,22 +362,57 @@ def _parse_lineup(row: object, *, index: int, seen: set[str]) -> PackLineup:
     map_name = values["map"].strip().lower()
     if not map_name:
         raise PackError(f"{label}.map is empty")
-    return PackLineup(
-        id=lineup_id,
-        map=map_name,
-        side=side,
-        grenade=grenade,
-        name=values["name"].strip(),
-        stand=values["stand"].strip(),
-        aim=values["aim"].strip(),
-        throw_type=values["throw_type"].strip(),
-        throw=values["throw"].strip(),
-        covers=values["covers"].strip(),
-        stand_image=_relative_image(values["stand_image"], label=f"{label}.stand_image"),
-        aim_image=_relative_image(values["aim_image"], label=f"{label}.aim_image"),
-        setpos=values["setpos"].strip(),
-        status=status,
+    extra = {key: row[key] for key in row if key not in _KNOWN_LINEUP}
+    return (
+        PackLineup(
+            id=lineup_id,
+            map=map_name,
+            side=side,
+            grenade=grenade,
+            name=values["name"].strip(),
+            stand=values["stand"].strip(),
+            aim=values["aim"].strip(),
+            throw_type=values["throw_type"].strip(),
+            throw=values["throw"].strip(),
+            covers=values["covers"].strip(),
+            stand_image=_relative_image(values["stand_image"], label=f"{label}.stand_image"),
+            aim_image=_relative_image(values["aim_image"], label=f"{label}.aim_image"),
+            setpos=values["setpos"].strip(),
+            status=status,
+            notes=optional["notes"],
+            source_url=optional["source_url"],
+            source_timestamp=optional["source_timestamp"],
+            second_source_url=optional["second_source_url"],
+            verified_by_second_source=optional["verified_by_second_source"],
+            extra=extra,
+            optional_keys=optional["present"],
+        ),
+        set(extra),
     )
+
+
+def _optional_fields(row: dict, label: str) -> dict:
+    found: dict = {
+        "notes": "",
+        "source_url": "",
+        "source_timestamp": "",
+        "second_source_url": "",
+        "verified_by_second_source": None,
+        "present": frozenset(key for key in (*_OPTIONAL_STRINGS, _OPTIONAL_BOOL) if key in row),
+    }
+    for key in _OPTIONAL_STRINGS:
+        if key not in row:
+            continue
+        value = row[key]
+        if not isinstance(value, str):
+            raise PackError(f"{label}.{key} must be a string")
+        found[key] = value.strip()
+    if _OPTIONAL_BOOL in row:
+        value = row[_OPTIONAL_BOOL]
+        if not isinstance(value, bool):
+            raise PackError(f"{label}.{_OPTIONAL_BOOL} must be true or false")
+        found[_OPTIONAL_BOOL] = value
+    return found
 
 
 def _relative_image(value: str, *, label: str) -> str:
@@ -365,7 +458,8 @@ def _import_zip(source: Path, library: Path) -> ImportResult:
         _safe_extract(source, dest)
         pack_file = _find_pack_file(dest)
         pack = validate_pack_dir(pack_file.parent)
-        return _merge_pack(pack, pack_file.parent, library)
+        merged = _merge_pack(pack, pack_file.parent, library)
+        return ImportResult(merged.added, merged.replaced, pack.unknown_fields)
 
 
 def _safe_extract(source: Path, dest: Path) -> None:
@@ -393,9 +487,12 @@ def _merge_pack(pack: LineupPack, source_root: Path, library: Path) -> ImportRes
         current = load_pack_file(existing_path)
         by_id = {item.id: item for item in current.lineups}
         maps = list(current.maps)
+        extra = dict(current.extra)
     else:
         by_id = {}
         maps = []
+        extra = {}
+    extra.update(pack.extra)
     added = 0
     replaced = 0
     for item in pack.lineups:
@@ -408,7 +505,12 @@ def _merge_pack(pack: LineupPack, source_root: Path, library: Path) -> ImportRes
         _copy_image(source_root, library, item.aim_image)
         if item.map not in maps:
             maps.append(item.map)
-    merged = LineupPack(version=PACK_VERSION, maps=tuple(maps), lineups=tuple(by_id.values()))
+    merged = LineupPack(
+        version=PACK_VERSION,
+        maps=tuple(maps),
+        lineups=tuple(by_id.values()),
+        extra=extra,
+    )
     payload = json.dumps(merged.as_dict(), indent=2) + "\n"
     temporary = existing_path.with_name(existing_path.name + ".tmp")
     temporary.write_text(payload, encoding="utf-8")
