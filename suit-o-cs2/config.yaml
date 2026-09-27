@@ -87,4 +87,20 @@ ptt:
   keybind: ""
   cs2_voice_key: "v"
 
+# Smoke lineup overlay. A separate always-on-top window. It never sends keys
+# to CS2. Hotkeys must not match ptt.cs2_voice_key or ptt.keybind.
+lineups:
+  enabled: true
+  # Card width in pixels. Height follows the image.
+  width: 320
+  # 0.3 to 1.0. The window is semi-transparent and click-through on Windows.
+  opacity: 0.92
+  # top-right, top-left, bottom-right, or bottom-left.
+  corner: "top-right"
+  # 0 is the primary monitor.
+  monitor: 0
+  hotkey_next: "ctrl+shift+right"
+  hotkey_previous: "ctrl+shift+left"
+  hotkey_toggle: "ctrl+shift+h"
+
 lines_file: lines/lines.yaml

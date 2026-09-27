@@ -24,6 +24,9 @@ from suit_o.gui.status import (
     selected_device_label,
     tone_color,
 )
+from suit_o.gui.global_hotkeys import GlobalHotkeys
+from suit_o.gui.lineups import LineupsPanel
+from suit_o.gui.overlay import LineupOverlay, monitors_for
 from suit_o.gui.training import TrainingPanel
 from suit_o.gui.voice import VoicePanel
 from suit_o.preferences import clamp_volume
@@ -46,8 +49,8 @@ class SuitOWindow:
 
         self.root = tk.Tk()
         self.root.title("Suit-O")
-        self.root.geometry("760x760")
-        self.root.minsize(640, 640)
+        self.root.geometry("860x900")
+        self.root.minsize(720, 760)
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
 
@@ -66,9 +69,11 @@ class SuitOWindow:
         listener = ttk.Frame(self.notebook, padding=(8, 8, 8, 8))
         voice = ttk.Frame(self.notebook, padding=(8, 8, 8, 8))
         training = ttk.Frame(self.notebook, padding=(8, 8, 8, 8))
+        lineups = ttk.Frame(self.notebook, padding=(8, 8, 8, 8))
         self.notebook.add(listener, text="Listener")
         self.notebook.add(voice, text="Voice")
         self.notebook.add(training, text="Voice Training")
+        self.notebook.add(lineups, text="Lineups")
         self._build_listener(listener)
 
         self.volume = tk.DoubleVar(value=round(app.config.speech.volume * 100))
@@ -89,6 +94,9 @@ class SuitOWindow:
             on_profile_built=self._on_profile_built,
             schedule=lambda callback: self.root.after(0, callback),
         )
+        self.lineups_panel = LineupsPanel(lineups, app, on_saved=self._bind_lineup_hotkeys)
+        self.overlay: LineupOverlay | None = None
+        self.hotkeys = GlobalHotkeys()
         self._paint_volume_caption(app.config.speech.volume)
         self._ui_ready = True
 
@@ -180,8 +188,22 @@ class SuitOWindow:
     def run(self) -> None:
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self._reload_devices()
+        self.lineups_panel.set_monitors([item.label for item in monitors_for(self.root)])
+        self.overlay = LineupOverlay(self.root, self.app, lambda: monitors_for(self.root))
+        self._bind_lineup_hotkeys()
         self._refresh()
         self.root.mainloop()
+
+    def _bind_lineup_hotkeys(self) -> None:
+        settings = self.app.config.lineups
+        bindings = {}
+        if settings.hotkey_next:
+            bindings[settings.hotkey_next] = self.app.lineup_next
+        if settings.hotkey_previous:
+            bindings[settings.hotkey_previous] = self.app.lineup_previous
+        if settings.hotkey_toggle:
+            bindings[settings.hotkey_toggle] = self.app.lineup_toggle
+        self.hotkeys.start(bindings)
 
     def _on_close(self) -> None:
         if self._closed:
@@ -195,6 +217,9 @@ class SuitOWindow:
         except Exception as exc:
             logger.exception("Could not save Suit-O settings")
             messagebox.showerror("Suit-O", f"Could not save settings.\n{exc}")
+        self.hotkeys.stop()
+        if self.overlay is not None:
+            self.overlay.close()
         self.app.stop()
         self.root.destroy()
 

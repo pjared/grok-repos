@@ -82,6 +82,20 @@ class PttConfig:
 
 
 @dataclass
+class LineupConfig:
+    """Smoke overlay. Hotkeys control that window only. They are not sent to CS2."""
+
+    enabled: bool = True
+    width: int = 320
+    opacity: float = 0.92
+    corner: str = "top-right"
+    monitor: int = 0
+    hotkey_next: str = "ctrl+shift+right"
+    hotkey_previous: str = "ctrl+shift+left"
+    hotkey_toggle: str = "ctrl+shift+h"
+
+
+@dataclass
 class Thresholds:
     low_health: int
     full_buy_money_ct: int
@@ -108,6 +122,7 @@ class Config:
     priority: dict[str, int]
     thresholds: Thresholds
     ptt: PttConfig
+    lineups: LineupConfig
     lines_path: Path
     warnings: list[str] = field(default_factory=list)
 
@@ -159,6 +174,7 @@ def parse_config(raw: dict, *, config_path: Path | None = None) -> Config:
     priority_raw = _mapping(raw, "priority")
     threshold_raw = _mapping(raw, "thresholds")
     ptt_raw = _mapping(raw, "ptt")
+    lineup_raw = _mapping(raw, "lineups")
 
     host = str(server_raw.get("host", "127.0.0.1")).strip()
     if host.lower() == "localhost":
@@ -315,6 +331,12 @@ def parse_config(raw: dict, *, config_path: Path | None = None) -> Config:
                 f"({voice_key!r}). Suit-O must not share Counter-Strike's voice key."
             )
 
+    lineups = _parse_lineups(
+        lineup_raw,
+        voice_key=voice_key,
+        ptt_key=keybind,
+    )
+
     lines_value = raw.get("lines_file", "lines/lines.yaml")
     lines_path = Path(str(lines_value))
     if not lines_path.is_absolute():
@@ -347,8 +369,50 @@ def parse_config(raw: dict, *, config_path: Path | None = None) -> Config:
             full_buy_money_unknown=full_unknown,
         ),
         ptt=PttConfig(keybind=keybind.strip(), cs2_voice_key=voice_key.strip()),
+        lineups=lineups,
         lines_path=lines_path,
         warnings=warnings,
+    )
+
+
+def _parse_lineups(raw: dict, *, voice_key: str, ptt_key: str) -> LineupConfig:
+    from suit_o.lineups.hotkeys import HotkeyError, assert_distinct, canonical_hotkey
+    from suit_o.lineups.place import CORNERS
+
+    enabled = raw.get("enabled", True)
+    if not isinstance(enabled, bool):
+        raise ConfigError("lineups.enabled must be true or false")
+    width = _as_int(raw.get("width", 320), "lineups.width")
+    if not 160 <= width <= 800:
+        raise ConfigError("lineups.width must be between 160 and 800")
+    opacity_raw = raw.get("opacity", 0.92)
+    if isinstance(opacity_raw, bool) or not isinstance(opacity_raw, (int, float)):
+        raise ConfigError("lineups.opacity must be a number from 0.3 to 1.0")
+    opacity = round(float(opacity_raw), 2)
+    if not 0.3 <= opacity <= 1.0:
+        raise ConfigError("lineups.opacity must be between 0.3 and 1.0")
+    corner = str(raw.get("corner", "top-right") or "top-right").strip().lower()
+    if corner not in CORNERS:
+        raise ConfigError("lineups.corner must be top-right, top-left, bottom-right, or bottom-left")
+    monitor = _as_int(raw.get("monitor", 0), "lineups.monitor")
+    if monitor < 0:
+        raise ConfigError("lineups.monitor cannot be negative")
+    try:
+        nxt = canonical_hotkey(str(raw.get("hotkey_next", "ctrl+shift+right") or ""))
+        prev = canonical_hotkey(str(raw.get("hotkey_previous", "ctrl+shift+left") or ""))
+        toggle = canonical_hotkey(str(raw.get("hotkey_toggle", "ctrl+shift+h") or ""))
+        assert_distinct([nxt, prev, toggle], voice_key=voice_key, ptt_key=ptt_key)
+    except HotkeyError as exc:
+        raise ConfigError(str(exc)) from exc
+    return LineupConfig(
+        enabled=enabled,
+        width=width,
+        opacity=opacity,
+        corner=corner,
+        monitor=monitor,
+        hotkey_next=nxt,
+        hotkey_previous=prev,
+        hotkey_toggle=toggle,
     )
 
 

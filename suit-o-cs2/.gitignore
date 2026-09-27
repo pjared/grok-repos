@@ -5,3 +5,9 @@ __pycache__/
 suit-o.log
 *.tmp
 voices/
+lineups/**/*.png
+lineups/**/*.jpg
+lineups/**/*.jpeg
+lineups/**/*.webp
+lineups/**/*.txt
+lineups/**/order.txt

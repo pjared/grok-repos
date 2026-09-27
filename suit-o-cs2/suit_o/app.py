@@ -19,7 +19,8 @@ from suit_o.gsi.parse import parse_payload
 from suit_o.gsi.server import GsiServer
 from suit_o.lines.provider import LineProvider, YamlLineProvider
 from suit_o.models import GameEvent, Utterance
-from suit_o.preferences import clamp_volume, save_user_settings
+from suit_o.lineups.deck import DeckView, LineupDeck
+from suit_o.preferences import clamp_volume, save_lineup_settings, save_user_settings
 from suit_o.speech.backend import SpeechBackend
 from suit_o.speech.devices import (
     list_output_device_names,
@@ -93,6 +94,7 @@ class SuitOApp:
         output_devices: Callable[[], list[str]] | None = None,
         voices: Callable[[], list[str]] | None = None,
         voices_dir: Path | None = None,
+        lineups_dir: Path | None = None,
         backend_factory: Callable[[SpeechConfig], SpeechBackend] | None = None,
     ) -> None:
         self.config = config
@@ -100,6 +102,9 @@ class SuitOApp:
         self._output_devices = output_devices
         self._voices = voices
         self.voices_dir = voices_dir or (PROJECT_ROOT / "voices")
+        self.lineups_dir = lineups_dir or (PROJECT_ROOT / "lineups")
+        self.lineups = LineupDeck(self.lineups_dir)
+        self.lineups.set_enabled(config.lineups.enabled)
         self._backend_factory = backend_factory or create_backend
         if not config.speech.voices_dir:
             config.speech.voices_dir = str(self.voices_dir)
@@ -534,6 +539,82 @@ class SuitOApp:
         )
         return line
 
+    def lineup_view(self) -> DeckView:
+        """Current overlay card. Safe to call from the window thread."""
+
+        view = self.lineups.view()
+        if not self.config.lineups.enabled:
+            return DeckView(
+                visible=False,
+                reason="disabled",
+                map_key=view.map_key,
+                side=view.side,
+                index=view.index,
+                total=view.total,
+                card=None,
+                hidden=view.hidden,
+            )
+        return view
+
+    def lineup_next(self) -> DeckView:
+        return self.lineups.cycle(1)
+
+    def lineup_previous(self) -> DeckView:
+        return self.lineups.cycle(-1)
+
+    def lineup_toggle(self) -> DeckView:
+        view = self.lineups.toggle()
+        self.note("Lineup overlay hidden" if view.hidden else "Lineup overlay will show with a smoke")
+        return view
+
+    def save_lineup_preferences(
+        self,
+        *,
+        enabled: bool,
+        width: int,
+        opacity: float,
+        corner: str,
+        monitor: int,
+        hotkey_next: str,
+        hotkey_previous: str,
+        hotkey_toggle: str,
+    ) -> None:
+        """Store overlay size, corner, and hotkeys. Does not touch speech settings."""
+
+        if self.config_path is None:
+            raise RuntimeError("Suit-O has no config file to update")
+        from suit_o.lineups.hotkeys import HotkeyError, canonical_hotkey
+
+        try:
+            next_key = canonical_hotkey(hotkey_next)
+            previous_key = canonical_hotkey(hotkey_previous)
+            toggle_key = canonical_hotkey(hotkey_toggle)
+        except HotkeyError as exc:
+            raise ConfigError(str(exc)) from exc
+        save_lineup_settings(
+            self.config_path,
+            enabled=enabled,
+            width=width,
+            opacity=opacity,
+            corner=corner,
+            monitor=monitor,
+            hotkey_next=next_key,
+            hotkey_previous=previous_key,
+            hotkey_toggle=toggle_key,
+            voice_key=self.config.ptt.cs2_voice_key,
+            ptt_key=self.config.ptt.keybind,
+        )
+        settings = self.config.lineups
+        settings.enabled = enabled
+        settings.width = width
+        settings.opacity = round(float(opacity), 2)
+        settings.corner = corner.strip().lower()
+        settings.monitor = monitor
+        settings.hotkey_next = next_key
+        settings.hotkey_previous = previous_key
+        settings.hotkey_toggle = toggle_key
+        self.lineups.set_enabled(enabled)
+
     def save_preferences(self) -> None:
         """Write volume, mute, output device, and voice tuning to the config file.
 
@@ -645,6 +726,7 @@ class SuitOApp:
         snapshot = parse_payload(data)
         if snapshot is None:
             return
+        self.lineups.observe(snapshot)
         detected = self.detector.update(snapshot)
         now = float(self._clock())
         events = [

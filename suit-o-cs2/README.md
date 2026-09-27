@@ -10,7 +10,7 @@ Suit-O v1 runs on your PC. It uses Windows' built-in speech synthesizer. It does
 
 CS2 posts JSON to `http://127.0.0.1:3000` when you install the config file in this folder. Suit-O checks a shared auth token, then reacts to your own HUD state: your health, your money, your round kills, the round result, and whether the bomb was planted, defused, or exploded. Those are things you can already see or hear.
 
-Bomb coordinates and weapon lists may arrive in the payload because the config asks for the `bomb` and `player_weapons` blocks. Suit-O never reads coordinates, never reads weapons, and never subscribes to other players. A clutch (last player alive) is not detected, because that would need everyone else's alive state.
+Bomb coordinates and weapon lists may arrive in the payload because the config asks for the `bomb` and `player_weapons` blocks. Suit-O never reads coordinates and never subscribes to other players. It does not keep your inventory. The one weapon fact it reads is the name of the item in your hand, so the lineup overlay can tell that you are holding a smoke. Ammo and the rest of the loadout are ignored, and that name is never spoken. A clutch (last player alive) is not detected, because that would need everyone else's alive state.
 
 ## Layout
 
@@ -61,13 +61,15 @@ These steps assume Windows 10 or 11 and the default Steam library path. If CS2 i
    python -m suit_o.gui
    ```
 
-   `Start Suit-O GUI.bat` does the same thing with `pythonw`. The window has three tabs.
+   `Start Suit-O GUI.bat` does the same thing with `pythonw`. The window has four tabs.
 
    **Listener.** Shows whether the listener is up and how long it has been since CS2 last sent game state. Mute, volume, and the output device are saved back to `config.yaml`. Pick the playback device you actually want to hear. The list is Windows' speech outputs (SAPI), for example speakers, a headset earphone, a digital output, or a monitor. A headset often shows up twice — once for game audio and once for chat — and the Windows default is not always the one that makes a sound. Choose the endpoint, then press **Test voice**. Microphones are not listed, and Suit-O still refuses a microphone or virtual-cable name if one is typed into `speech.output_device`.
 
    **Voice.** Fine-tune the voice used for every in-game line. The picker lists installed Windows SAPI voices (blank in the config, shown as "Engine default", keeps the engine's own voice) and any voice you built on the Voice Training tab (`Clone: name`). Sliders set speaking rate (words per minute), pitch (-10 to 10), volume (the same slider as on the Listener tab), and an optional pause before each line (milliseconds). Emphasis is None, Mild, or Strong. **Preview** speaks the text box through the output device selected on the Listener tab, including slider positions you have not saved yet. **Save** writes the settings and uses them for every in-game line. Saving a cloned voice sets `speech.backend` to `clone`. **Reset to defaults** puts back rate 185, pitch 0, volume 0.85, no pause, no emphasis, and the engine default voice, and saves that immediately. Closing the window saves the last saved tuning, not an unsaved draft. Volume is the exception: moving either volume slider saves it.
 
    **Voice Training.** Record a short script in your own voice (or someone who agreed), then press **Build voice**. That stores a profile under `voices/` (gitignored) and adds it to the Voice tab. See [Voice cloning](#voice-cloning) below. The tab tells you if the optional packages are missing, and whether synthesis will use NVIDIA CUDA or the CPU.
+
+   **Lineups.** Import your own smoke screenshots and show them in a small overlay while you play. See [Smoke lineups](#smoke-lineups) below.
 
 7. The console listener still works if you want a terminal instead of the window. Double-click `Start Suit-O.bat`, or:
 
@@ -163,6 +165,24 @@ Per-event cooldowns and a global gap (`rate_limit.min_interval_seconds`) keep it
 
 A broke freeze (under rifle-plus-helmet money: 4100 on CT, 3700 on T) uses the low-buy lines instead of the generic round-start line.
 
+## Smoke lineups
+
+While you hold a smoke grenade, Suit-O can show one of your lineup screenshots in a small window at the corner of the screen (top-right by default). The window is a separate always-on-top surface. It does not read game memory, inject code, hook DirectX, or send keystrokes or mouse input into CS2. The only input it uses is the Game State Integration feed you already installed: the map, your team (T or CT), whether you are alive, the round phase, and the name of the weapon in your hand.
+
+Run CS2 in **borderless windowed** or **windowed** mode so a normal desktop window can sit on top of the game. Fullscreen exclusive mode will cover it. Some third-party leagues and anti-cheats, including FACEIT, restrict overlays. This one is meant for Valve matchmaking and casual play.
+
+The card hides when the smoke is not in your hand, when you are dead, or when the round is over. A hotkey can hide it even while you are holding a smoke, and show it again the next time the trigger matches. Two more hotkeys cycle to the next or previous lineup. The defaults are `ctrl+shift+right`, `ctrl+shift+left`, and `ctrl+shift+h`. They are stored in `config.yaml` under `lineups` and must not be the same chord as `ptt.cs2_voice_key` or the reserved `ptt.keybind`. On Windows they are registered with the system so they work while CS2 is focused. They only change this overlay. They are not forwarded to the game. On Windows the overlay is click-through, so mouse clicks land on the game underneath.
+
+No lineup images are shipped. Add your own PNGs:
+
+```text
+lineups/<map>/<t|ct>/<name>.png
+lineups/<map>/<t|ct>/<name>.txt    optional caption; otherwise the filename is the caption
+lineups/<map>/<t|ct>/order.txt     optional order, one filename per line
+```
+
+Use the CS2 map id, such as `de_dust2` or `de_mirage`. A short folder name (`dust2`) is also accepted. `t` and `ct` are the two sides. Empty folders for the current premier maps are already there. The **Lineups** tab can import PNGs for a map and side, rename them, set a caption, reorder them, and preview them. It also saves the card width, opacity, corner, and monitor. Images you add stay on your machine; png and caption files under `lineups/` are gitignored.
+
 ## Remote speech later
 
 `speech.backend: remote` is reserved for an HTTP TTS server on the home LAN (the machine in mind is a DGX Spark). Selecting it stops startup with an error. v1 contains no client for that server. When it exists, it should honor `speech.voice`, `speech.rate`, `speech.volume`, `speech.pitch`, `speech.pause_ms`, and `speech.emphasis`, and playback still has to be a local headset or speakers, still not voice chat.
@@ -185,6 +205,8 @@ A broke freeze (under rifle-plus-helmet money: 4100 on CT, 3700 on T) uses the l
 
 **Startup says the output device looks like a microphone or cable.** `speech.output_device` matched a mic, stereo mix, or virtual-cable name. Clear it, or set a headphone/speaker name. Suit-O will not play into a device that usually feeds voice chat.
 
-**Startup says the push-to-talk key matches the CS2 voice key.** Change `ptt.keybind` or clear it. Leave `ptt.cs2_voice_key` set to the key you actually use in game so the check stays honest.
+**Startup says the push-to-talk key matches the CS2 voice key.** Change `ptt.keybind` or clear it. Leave `ptt.cs2_voice_key` set to the key you actually use in game so the check stays honest. A lineup hotkey that uses that same chord is refused for the same reason.
+
+**The smoke overlay never appears.** Hold a smoke on a map that has PNGs for your side, and be alive before the round ends. CS2 needs to be borderless or windowed, not fullscreen exclusive. Check **Overlay enabled** on the Lineups tab. If you pressed the hide hotkey, press it again. FACEIT and similar clients may block any overlay; use this for Valve matchmaking and casual games.
 
 **You only want to develop on a machine without CS2.** `python -m suit_o.simulate` and `python -m pytest` are the whole loop. They stub speech and do not need the game or a sound device.

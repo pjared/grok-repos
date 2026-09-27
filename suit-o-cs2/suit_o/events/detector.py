@@ -221,6 +221,10 @@ def _merge_own(previous: OwnPlayer | None, incoming: OwnPlayer) -> OwnPlayer:
             incoming.round_killhs if incoming.round_killhs is not None else previous.round_killhs
         ),
         deaths=incoming.deaths if incoming.deaths is not None else previous.deaths,
+        active_weapon=(
+            incoming.active_weapon if incoming.weapons_seen else previous.active_weapon
+        ),
+        weapons_seen=incoming.weapons_seen or previous.weapons_seen,
     )
 
 

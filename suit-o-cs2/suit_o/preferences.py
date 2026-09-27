@@ -35,6 +35,110 @@ def format_volume(volume: float) -> str:
     return text
 
 
+def save_lineup_settings(
+    path: Path,
+    *,
+    enabled: bool | None = None,
+    width: int | None = None,
+    opacity: float | None = None,
+    corner: str | None = None,
+    monitor: int | None = None,
+    hotkey_next: str | None = None,
+    hotkey_previous: str | None = None,
+    hotkey_toggle: str | None = None,
+    voice_key: str = "",
+    ptt_key: str = "",
+) -> None:
+    """Update the lineups section. Omitted arguments are left alone.
+
+    Hotkeys are checked against the CS2 voice key and the reserved push-to-talk
+    bind. A bad value leaves the file untouched.
+    """
+
+    from suit_o.lineups.hotkeys import HotkeyError, assert_distinct, canonical_hotkey
+    from suit_o.lineups.place import CORNERS
+
+    if all(
+        value is None
+        for value in (
+            enabled,
+            width,
+            opacity,
+            corner,
+            monitor,
+            hotkey_next,
+            hotkey_previous,
+            hotkey_toggle,
+        )
+    ):
+        return
+    rendered_enabled = None if enabled is None else ("true" if enabled else "false")
+    rendered_width = None
+    if width is not None:
+        if isinstance(width, bool) or not isinstance(width, int) or not 160 <= width <= 800:
+            raise ConfigError("lineups.width must be an integer from 160 to 800")
+        rendered_width = str(width)
+    rendered_opacity = None
+    if opacity is not None:
+        if isinstance(opacity, bool) or not isinstance(opacity, (int, float)):
+            raise ConfigError("lineups.opacity must be a number from 0.3 to 1.0")
+        opacity_f = round(float(opacity), 2)
+        if not 0.3 <= opacity_f <= 1.0:
+            raise ConfigError("lineups.opacity must be between 0.3 and 1.0")
+        rendered_opacity = format_volume(opacity_f)
+    rendered_corner = None
+    if corner is not None:
+        cleaned = corner.strip().lower()
+        if cleaned not in CORNERS:
+            raise ConfigError(
+                "lineups.corner must be top-right, top-left, bottom-right, or bottom-left"
+            )
+        rendered_corner = json.dumps(cleaned)
+    rendered_monitor = None
+    if monitor is not None:
+        if isinstance(monitor, bool) or not isinstance(monitor, int) or monitor < 0:
+            raise ConfigError("lineups.monitor must be a monitor index starting at 0")
+        rendered_monitor = str(monitor)
+    chords = {
+        "hotkey_next": hotkey_next,
+        "hotkey_previous": hotkey_previous,
+        "hotkey_toggle": hotkey_toggle,
+    }
+    rendered_hotkeys: dict[str, str | None] = {key: None for key in chords}
+    if any(value is not None for value in chords.values()):
+        try:
+            labels = []
+            for key, value in chords.items():
+                if value is None:
+                    continue
+                label = canonical_hotkey(value)
+                rendered_hotkeys[key] = json.dumps(label)
+                labels.append(label)
+            assert_distinct(labels, voice_key=voice_key, ptt_key=ptt_key)
+        except HotkeyError as exc:
+            raise ConfigError(str(exc)) from exc
+
+    original = path.read_bytes().decode("utf-8")
+    newline = "\r\n" if "\r\n" in original else "\n"
+    text = original.replace("\r\n", "\n")
+    if rendered_enabled is not None:
+        text = _replace_yaml_scalar(text, "enabled", rendered_enabled, parent="lineups")
+    if rendered_width is not None:
+        text = _replace_yaml_scalar(text, "width", rendered_width, parent="lineups")
+    if rendered_opacity is not None:
+        text = _replace_yaml_scalar(text, "opacity", rendered_opacity, parent="lineups")
+    if rendered_corner is not None:
+        text = _replace_yaml_scalar(text, "corner", rendered_corner, parent="lineups")
+    if rendered_monitor is not None:
+        text = _replace_yaml_scalar(text, "monitor", rendered_monitor, parent="lineups")
+    for key, rendered in rendered_hotkeys.items():
+        if rendered is not None:
+            text = _replace_yaml_scalar(text, key, rendered, parent="lineups")
+    if not text.endswith("\n"):
+        text += "\n"
+    _atomic_write(path, text.replace("\n", newline).encode("utf-8"))
+
+
 def save_user_settings(
     path: Path,
     *,

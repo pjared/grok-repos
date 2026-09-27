@@ -51,17 +51,25 @@ class OwnPlayer:
     round_kills: int | None = None
     round_killhs: int | None = None
     deaths: int | None = None
+    # Name of the weapon currently in hand, such as weapon_smokegrenade.
+    # The rest of the inventory is not stored.
+    active_weapon: str | None = None
+    weapons_seen: bool = False
 
 
 @dataclass(frozen=True)
 class Snapshot:
     """One GSI payload, reduced to fields Suit-O is allowed to use.
 
-    Bomb coordinates, weapon lists, and other players are not stored.
+    Bomb coordinates, other players, and the weapon inventory are not stored.
+    ``map_token`` is the CS2 map id (``de_dust2``). ``map_name`` is the short
+    name used in spoken lines. ``active_weapon`` on ``own`` is only the item
+    in hand, so a smoke lineup can be shown without keeping the loadout.
     """
 
     map_present: bool = False
     map_name: str | None = None
+    map_token: str | None = None
     map_phase: str | None = None
     round_present: bool = False
     round_phase: str | None = None

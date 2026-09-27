@@ -1,8 +1,8 @@
 """Synthetic GSI payloads shaped like CS2's live feed.
 
 The simulator posts these. Tests build smaller variants with the same helper.
-Weapon lists and bomb coordinates can be attached for negative tests; the
-parser does not read them.
+Weapon lists and bomb coordinates can be attached for tests. The parser
+keeps only the active weapon's name, never ammo or positions.
 """
 
 from __future__ import annotations

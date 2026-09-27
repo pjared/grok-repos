@@ -1,8 +1,11 @@
 """Turn a GSI JSON object into a Snapshot.
 
 Only the local player's HUD state, the public round/map phase, and the public
-bomb condition (planted, defused, exploded) are kept. Bomb coordinates and
-weapon lists are never read, so they cannot leak into lines.
+bomb condition (planted, defused, exploded) are kept. Bomb coordinates are
+never read. The weapon inventory is not stored. The one exception is the name
+of the weapon in the player's hand, which the smoke-lineup overlay uses.
+Ammo, paint, and weapon positions are ignored, and nothing from the loadout
+is passed to spoken lines.
 """
 
 from __future__ import annotations
@@ -35,10 +38,13 @@ def parse_payload(data: dict) -> Snapshot | None:
     bomb_known = round_block is not None or isinstance(data.get("bomb"), dict)
 
     map_name = None
+    map_token = None
     map_phase = None
     round_number = None
     if map_block is not None:
-        map_name = _pretty_map(_as_str(map_block.get("name")))
+        raw_map = _as_str(map_block.get("name"))
+        map_name = _pretty_map(raw_map)
+        map_token = _map_token(raw_map)
         map_phase = _lower(map_block.get("phase"))
         round_number = _as_int(map_block.get("round"))
 
@@ -58,7 +64,7 @@ def parse_payload(data: dict) -> Snapshot | None:
                 if isinstance(player_block.get("match_stats"), dict)
                 else {}
             )
-            # player.weapons is intentionally not read.
+            weapons_seen, active_weapon = _active_weapon_name(player_block.get("weapons"))
             own = OwnPlayer(
                 steamid=player_steam,
                 activity=_lower(player_block.get("activity")),
@@ -68,11 +74,14 @@ def parse_payload(data: dict) -> Snapshot | None:
                 round_kills=_as_int(state.get("round_kills")),
                 round_killhs=_as_int(state.get("round_killhs")),
                 deaths=_as_int(stats.get("deaths")),
+                active_weapon=active_weapon,
+                weapons_seen=weapons_seen,
             )
 
     return Snapshot(
         map_present=map_block is not None,
         map_name=map_name,
+        map_token=map_token,
         map_phase=map_phase,
         round_present=round_block is not None,
         round_phase=round_phase,
@@ -102,6 +111,36 @@ def _bomb_condition(data: dict) -> str | None:
         if preferred in found:
             return preferred
     return None
+
+
+def _active_weapon_name(weapons: object) -> tuple[bool, str | None]:
+    """Return whether a weapons block was present, and the active item's name.
+
+    Holstered weapons, ammo counts, and any position field are ignored.
+    """
+
+    if not isinstance(weapons, dict):
+        return False, None
+    for item in weapons.values():
+        if not isinstance(item, dict):
+            continue
+        state = item.get("state")
+        if not isinstance(state, str) or state.strip().lower() != "active":
+            continue
+        name = item.get("name")
+        if isinstance(name, str) and name.strip():
+            return True, name.strip().lower()
+        return True, None
+    return True, None
+
+
+def _map_token(name: str | None) -> str | None:
+    """CS2 map id, lowercased, for lineup folders. ``De_Dust2`` becomes ``de_dust2``."""
+
+    if not name:
+        return None
+    token = name.strip().lower().replace(" ", "")
+    return token or None
 
 
 def _pretty_map(name: str | None) -> str | None:
