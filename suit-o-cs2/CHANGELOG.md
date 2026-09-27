@@ -12,7 +12,7 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ### Fixed
 
-- The README says to start Suit-O once before restarting CS2, so the game picks up the GSI key.
+- The README says to start Suit-O once before restarting CS2, so the game picks up the GSI key. (`5504bd2`)
 
 ## [0.19.13] - 2026-09-27
 
