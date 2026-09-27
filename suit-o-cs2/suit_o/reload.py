@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 from collections.abc import Sequence
@@ -310,3 +311,17 @@ def gui_restart_argv(config_path: Path | None) -> list[str]:
     if config_path is not None and Path(config_path).resolve() != DEFAULT_CONFIG_PATH.resolve():
         argv.extend(["--config", str(config_path)])
     return argv
+
+
+def replace_process(argv: list[str]) -> None:
+    """Replace this process with ``argv``.
+
+    On Windows, ``os.execv`` builds a command line and splits on spaces, so a
+    Python install under Program Files or a config path with a space never
+    starts. ``Popen`` keeps each argument intact. Unix keeps ``execv``.
+    """
+
+    if sys.platform == "win32":
+        subprocess.Popen(argv)
+        raise SystemExit(0)
+    os.execv(argv[0], argv)

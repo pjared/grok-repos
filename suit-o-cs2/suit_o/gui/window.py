@@ -8,7 +8,6 @@ display.
 from __future__ import annotations
 
 import logging
-import os
 import re
 import sys
 import threading
@@ -28,6 +27,7 @@ from suit_o.reload import (
     choose_reload,
     consume_restart_state,
     gui_restart_argv,
+    replace_process,
     write_activity_handoff,
     write_restart_state,
 )
@@ -746,7 +746,7 @@ class SuitOWindow:
         except tk.TclError:
             pass
         try:
-            os.execv(sys.executable, argv)
+            replace_process(argv)
         except OSError as exc:
             logger.exception("Could not relaunch Suit-O")
             _report_relaunch_failure(str(exc))

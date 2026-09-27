@@ -10,6 +10,10 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+### Fixed
+
+- Restarting Suit-O on Windows keeps working when Python or the config path contains a space.
+
 ## [0.19.7] - 2026-09-27
 
 ### Fixed

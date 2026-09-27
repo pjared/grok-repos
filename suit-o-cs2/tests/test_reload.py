@@ -24,6 +24,7 @@ from suit_o.reload import (
     choose_reload,
     consume_restart_state,
     gui_restart_argv,
+    replace_process,
     restart_is_blocked,
     write_restart_state,
 )
@@ -236,6 +237,26 @@ def test_restart_state_round_trip_and_launch_argv(tmp_path: Path):
     argv = gui_restart_argv(path)
     assert argv[1:4] == ["-m", "suit_o.gui", "--config"]
     assert argv[-1] == str(path)
+
+
+def test_restart_keeps_spaces_in_the_windows_command(monkeypatch):
+    import suit_o.reload as reload_module
+
+    spaced = Path("C:/Program Files/Suit-O/config.yaml")
+    argv = [r"C:\Program Files\Python312\python.exe", "-m", "suit_o.gui", "--config", str(spaced)]
+    launched: list[list[str]] = []
+    monkeypatch.setattr(reload_module.sys, "platform", "win32")
+    monkeypatch.setattr(reload_module.subprocess, "Popen", lambda command: launched.append(list(command)))
+    try:
+        replace_process(argv)
+    except SystemExit as exc:
+        assert exc.code == 0
+    else:
+        raise AssertionError("the Windows relaunch did not exit")
+    assert launched == [argv]
+    assert " " in launched[0][0]
+    assert launched[0][-1] == str(spaced)
+    assert " " in launched[0][-1]
 
 
 def test_update_reports_local_changes_fast_forward_and_requirements(tmp_path: Path):
