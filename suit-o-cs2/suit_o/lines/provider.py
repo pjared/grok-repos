@@ -31,8 +31,8 @@ _DEFAULT_CONTEXT = {
 class LineDecision:
     """A line to speak, or the reason Suit-O stayed quiet.
 
-    ``status`` is ``spoken``, ``mute``, ``cooldown``, ``rate-limit``, or
-    ``none`` when that event has no stock line.
+    ``status`` is ``spoken``, ``muted``, ``cooldown``, ``lower priority``,
+    or ``no matching line``.
     """
 
     text: str | None
@@ -124,18 +124,18 @@ class YamlLineProvider(LineProvider):
 
     def _decide(self, event: GameEvent, now: float) -> LineDecision:
         if self.muted:
-            return LineDecision(None, "mute")
+            return LineDecision(None, "muted")
         key = event.type.value
         pool = self._lines.get(key) or []
         if not pool:
-            return LineDecision(None, "none")
+            return LineDecision(None, "no matching line")
         last_at = self._last_at.get(key)
         cooldown = self._cooldowns.get(key, self._default_cooldown)
         if last_at is not None and now - last_at < cooldown:
             return LineDecision(None, "cooldown")
         if event.priority < self._preempt_min_priority:
             if self._last_global is not None and now - self._last_global < self._min_interval:
-                return LineDecision(None, "rate-limit")
+                return LineDecision(None, "lower priority")
         choice = self._pick(key, pool)
         self._last_at[key] = now
         self._last_global = now

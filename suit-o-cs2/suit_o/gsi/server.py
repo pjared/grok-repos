@@ -33,11 +33,15 @@ class GsiServer(ThreadingHTTPServer):
         queue: Queue,
         on_toggle_mute: Callable[[], bool],
         status: Callable[[], dict],
+        on_received: Callable[[], None] | None = None,
+        on_rejected: Callable[[str], None] | None = None,
     ) -> None:
         self.token = token
         self.payload_queue = queue
         self.on_toggle_mute = on_toggle_mute
         self.status = status
+        self.on_received = on_received
+        self.on_rejected = on_rejected
         super().__init__((host, port), GsiHandler)
 
 
@@ -68,19 +72,19 @@ class GsiHandler(BaseHTTPRequestHandler):
         try:
             length = int(length_header)
         except ValueError:
-            self._reply(400, b'{"error":"bad content length"}')
+            self._reject(400, b'{"error":"bad content length"}', "bad content length")
             return
         if length < 0 or length > MAX_BODY_BYTES:
-            self._reply(413, b'{"error":"payload too large"}')
+            self._reject(413, b'{"error":"payload too large"}', "payload too large")
             return
         raw = self.rfile.read(length) if length else b""
         try:
             data = json.loads(raw.decode("utf-8")) if raw else {}
         except (UnicodeDecodeError, json.JSONDecodeError):
-            self._reply(400, b'{"error":"invalid json"}')
+            self._reject(400, b'{"error":"invalid json"}', "invalid json")
             return
         if not isinstance(data, dict):
-            self._reply(400, b'{"error":"json object required"}')
+            self._reject(400, b'{"error":"json object required"}', "json object required")
             return
         provided = ""
         auth = data.get("auth")
@@ -88,13 +92,34 @@ class GsiHandler(BaseHTTPRequestHandler):
             provided = str(auth.get("token"))
         if not _tokens_match(self.server.token, provided):
             logger.warning("Rejected GSI payload from %s: auth token mismatch", self.client_address[0])
-            self._reply(401, b'{"error":"unauthorized"}')
+            self._reject(401, b'{"error":"unauthorized"}', "bad token")
             return
+        self._received()
         try:
             self.server.payload_queue.put_nowait(data)
         except Full:
             logger.warning("GSI queue is full; dropping a payload so the HTTP handler can return")
+            self._reject(200, b'{"ok":true}', "queue full")
+            return
         self._reply(200, b'{"ok":true}')
+
+    def _received(self) -> None:
+        callback = self.server.on_received
+        if callback is None:
+            return
+        try:
+            callback()
+        except Exception:
+            logger.exception("Could not record a GSI payload")
+
+    def _reject(self, code: int, body: bytes, reason: str) -> None:
+        callback = self.server.on_rejected
+        if callback is not None:
+            try:
+                callback(reason)
+            except Exception:
+                logger.exception("Could not record a rejected GSI payload")
+        self._reply(code, body)
 
     def _reply(self, code: int, body: bytes) -> None:
         self.send_response(code)

@@ -190,7 +190,7 @@ Use the CS2 map id, such as `de_dust2` or `de_mirage`. A short folder name (`dus
 
 ## Speech log
 
-Every line Suit-O speaks is written to the Listener tab with a local time (`HH:MM:SS`), and appended to a daily file in `logs/` (`speech-YYYY-MM-DD.jsonl`). A line held back by mute or a cooldown is written too, marked `skipped (mute)` or `skipped (cooldown)`. Each file row has the time, the event, the line, that status, the map and round number when CS2 has sent them, and the voice name (or `engine default`). **Open log folder** opens `logs/`. **Copy** puts the lines currently in the window on the clipboard. `logs.keep_days` (14 by default) deletes a daily file once it is that many days old. The folder is gitignored. The game-state token is not written there.
+Every detected game event is written to the Listener tab with a local time (`HH:MM:SS`), and appended to a daily file in `logs/` (`speech-YYYY-MM-DD.jsonl`). A spoken line includes the words. When Suit-O stays quiet, the row says why: `no matching line`, `cooldown`, `muted`, `lower priority`, or `queue full`. Each of those rows has the event, the map and round number when CS2 has sent them, and the voice name (or `engine default`). Accepted game-state posts are counted per minute (how many, and the first and last time), so a minute with no row means CS2 sent nothing. A refused post, including a bad token, is one row with the reason and not the token or the raw body. **Open log folder** opens `logs/`. **Copy** puts the lines currently in the window on the clipboard. Daily files are kept for 14 days (`logs.keep_days`). The folder is gitignored. The auth token is stripped if it ever appears in a field.
 
 ## Updates without closing the window
 

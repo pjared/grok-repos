@@ -36,7 +36,7 @@ from suit_o.speech.clone_backend import CloneSpeechBackend
 from suit_o.speech.factory import create_backend
 from suit_o.speech.pyttsx3_backend import Pyttsx3Backend
 from suit_o.speech.service import SpeechService
-from suit_o.speechlog import SpeechLog, SpeechLogEntry
+from suit_o.speechlog import PayloadMinute, SpeechLog, SpeechLogEntry
 from suit_o.speech.tuning import (
     VoiceTuning,
     list_sapi_voice_names,
@@ -131,6 +131,7 @@ class SuitOApp:
         self.speech_log = SpeechLog(
             speech_log_dir or (PROJECT_ROOT / "logs"),
             keep_days=config.logs.keep_days,
+            secrets=(config.server.token,),
         )
         self._backend_factory = backend_factory or create_backend
         if not config.speech.voices_dir:
@@ -138,6 +139,7 @@ class SuitOApp:
         self._clock = clock or time.monotonic
         self.backend = backend if backend is not None else self._backend_factory(config.speech)
         self.speech = SpeechService(self.backend, config.preempt_min_priority)
+        self.speech.on_dropped = self._on_speech_dropped
         self.lines = line_provider or YamlLineProvider.from_file(
             config.lines_path,
             cooldowns=config.cooldowns,
@@ -186,6 +188,8 @@ class SuitOApp:
             self._queue,
             self.toggle_mute,
             self.status,
+            on_received=self._on_gsi_received,
+            on_rejected=self._on_gsi_rejected,
         )
         self._http_thread = threading.Thread(
             target=self._httpd.serve_forever,
@@ -755,6 +759,7 @@ class SuitOApp:
             self.lineups.set_enabled(loaded.lineups.enabled)
             self.lineups.set_smokes_only(loaded.lineups.smokes_only)
             self.speech_log.keep_days = loaded.logs.keep_days
+            self.speech_log.secrets = (loaded.server.token,)
             self.speech_log.prune()
             tuning_changed = self.current_tuning() != previous_tuning
             backend_changed = (
@@ -838,6 +843,9 @@ class SuitOApp:
         self.speech.stop()
         if self._http_thread is not None:
             self._http_thread.join(timeout=2)
+        summary = self.speech_log.flush()
+        if summary is not None:
+            self._record_payload_minute(summary)
         for renderer in self._renderers:
             renderer.close()
         self._renderers.clear()
@@ -885,7 +893,7 @@ class SuitOApp:
                 self.speech.submit(
                     Utterance(event_type=event.type.value, text=decision.text, priority=event.priority)
                 )
-            elif decision.status in {"mute", "cooldown", "rate-limit"}:
+            else:
                 self._log_speech(event.type.value, "", decision.status)
 
     def _stdin_loop(self) -> None:
@@ -912,8 +920,23 @@ class SuitOApp:
 
         self._record(message)
 
+    def _on_gsi_received(self) -> None:
+        summary = self.speech_log.note_payload(time.time())
+        if summary is not None:
+            self._record_payload_minute(summary)
+
+    def _on_gsi_rejected(self, reason: str) -> None:
+        self.speech_log.note_rejected(time.time(), reason)
+        self._record(f"gsi: rejected ({reason})")
+
+    def _on_speech_dropped(self, utterance: Utterance) -> None:
+        self._log_speech(utterance.event_type, utterance.text, "queue full")
+
+    def _record_payload_minute(self, summary: PayloadMinute) -> None:
+        self._record(f"gsi: {summary.count} payload(s) from {summary.first} to {summary.last}")
+
     def _log_speech(self, event: str, text: str, status: str, *, voice: str | None = None) -> None:
-        """Remember a spoken line, or a line mute or a cooldown held back."""
+        """Remember a spoken line, or why a detected event was not spoken."""
 
         chosen = self.config.speech.voice if voice is None else voice
         label = chosen.strip() or "engine default"

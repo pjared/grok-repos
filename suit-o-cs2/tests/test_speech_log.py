@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+import urllib.error
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -12,6 +13,9 @@ import yaml
 from suit_o.app import SuitOApp
 from suit_o.config import DEFAULT_CONFIG_PATH, ConfigError, load_config, parse_config
 from suit_o.gsi.payloads import make_payload
+from suit_o.lines.provider import YamlLineProvider
+from suit_o.models import EventType, GameEvent
+from suit_o.simulate import post_payload, simulation_config
 from suit_o.speech.stub import StubSpeechBackend
 from suit_o.speechlog import SpeechLog, SpeechLogEntry
 
@@ -105,7 +109,7 @@ def test_app_logs_spoken_lines_and_mute_or_cooldown_skips(tmp_path: Path):
     statuses = [row["status"] for row in rows]
     assert "spoken" in statuses
     assert "cooldown" in statuses
-    assert "mute" in statuses
+    assert "muted" in statuses
     spoken_row = next(row for row in rows if row["status"] == "spoken")
     assert spoken_row["map"] == "mirage"
     assert spoken_row["round"] == 4
@@ -114,5 +118,100 @@ def test_app_logs_spoken_lines_and_mute_or_cooldown_skips(tmp_path: Path):
     assert spoken_row["event"]
     messages = [item.message for item in app.activity()]
     assert any(message.endswith("skipped (cooldown)") for message in messages)
-    assert any(message.endswith("skipped (mute)") for message in messages)
+    assert any(message.endswith("skipped (muted)") for message in messages)
     assert any(": " in message and "skipped" not in message for message in messages)
+
+
+def test_silence_reasons_include_no_line_and_lower_priority():
+    chooser = YamlLineProvider(
+        {"kill": ["Nice."]},
+        default_cooldown=0,
+        min_interval=10,
+        preempt_min_priority=70,
+    )
+    kill = GameEvent(EventType.KILL, 36, {})
+    death = GameEvent(EventType.DEATH, 36, {})
+    assert chooser.decide(kill, 0).status == "spoken"
+    assert chooser.decide(death, 1).status == "no matching line"
+    assert chooser.decide(kill, 2).status == "lower priority"
+
+
+def test_payload_minutes_and_the_token_are_redacted(tmp_path: Path):
+    token = "suito-secret-token-9f3a"
+    wrong = "wrong-token-value-77"
+    start = datetime(2026, 9, 27, 15, 4, 5)
+    log = SpeechLog(tmp_path, keep_days=14, now=lambda: start.timestamp(), secrets=(token,))
+    log.append(
+        _entry(
+            start.timestamp(),
+            text=f"heard {token} in the line",
+            map_name=f"map-{token}",
+            voice=token,
+        )
+    )
+    log.note_rejected(start.timestamp(), f"bad token {token} {wrong}")
+    assert log.note_payload(start.timestamp()) is None
+    assert log.note_payload(start.timestamp() + 20) is None
+    rolled = log.note_payload(start.timestamp() + 60)
+    assert rolled is not None
+    assert rolled.count == 2
+    assert rolled.first == "2026-09-27T15:04:05"
+    assert rolled.last == "2026-09-27T15:04:25"
+
+    body = (tmp_path / "speech-2026-09-27.jsonl").read_text(encoding="utf-8")
+    assert token not in body
+    assert "[redacted]" in body
+    rows = [json.loads(line) for line in body.splitlines()]
+    assert rows[0]["text"] == "heard [redacted] in the line"
+    assert rows[0]["map"] == "map-[redacted]"
+    assert rows[0]["voice"] == "[redacted]"
+    assert rows[1]["kind"] == "rejected"
+    assert rows[1]["status"] == f"bad token [redacted] {wrong}"
+    assert "auth" not in rows[1]
+    payload = rows[2]
+    assert payload["kind"] == "payload"
+    assert payload["status"] == "received"
+    assert payload["count"] == 2
+    assert payload["first"] == "2026-09-27T15:04:05"
+    assert payload["last"] == "2026-09-27T15:04:25"
+
+
+def test_rejected_gsi_post_does_not_write_the_token(tmp_path: Path):
+    folder = tmp_path / "logs"
+    config = simulation_config(DEFAULT_CONFIG_PATH)
+    real = config.server.token
+    wrong = "wrong-token-value-77"
+    app = SuitOApp(
+        config,
+        backend=StubSpeechBackend(),
+        speech_log_dir=folder,
+        line_provider=YamlLineProvider({}),
+    )
+    app.start()
+    try:
+        host, port = app.server_address
+        url = f"http://{host}:{port}/"
+        bad = make_payload(token=wrong, map_name="de_mirage", round_number=2)
+        bad["player"]["name"] = real
+        try:
+            post_payload(url, bad)
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 401
+            exc.read()
+        else:
+            raise AssertionError("a bad token was accepted")
+        post_payload(url, make_payload(token=real, map_name="de_mirage", round_number=2, round_kills=0))
+        post_payload(url, make_payload(token=real, map_name="de_mirage", round_number=2, round_kills=1, kills=1))
+    finally:
+        app.stop()
+
+    files = list(folder.glob("speech-*.jsonl"))
+    assert len(files) == 1
+    body = files[0].read_text(encoding="utf-8")
+    assert real not in body
+    assert wrong not in body
+    rows = [json.loads(line) for line in body.splitlines()]
+    assert any(row["kind"] == "rejected" and row["status"] == "bad token" for row in rows)
+    assert any(row["kind"] == "payload" and row["count"] >= 1 for row in rows)
+    assert any(row["status"] == "no matching line" for row in rows)
+    assert all("auth" not in row for row in rows)

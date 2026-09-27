@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from suit_o.config import ConfigError, is_disallowed_output_device
@@ -52,6 +53,7 @@ class SpeechService:
         self._cv = threading.Condition()
         self._thread = threading.Thread(target=self._loop, name="suit-o-speech", daemon=True)
         self._started = False
+        self.on_dropped: Callable[[Utterance], None] | None = None
 
     def start(self) -> None:
         if self._started:
@@ -67,6 +69,7 @@ class SpeechService:
         tuning: VoiceTuning | None = None,
         backend: SpeechBackend | None = None,
     ) -> None:
+        dropped: list[_Job] = []
         with self._cv:
             if self._stop or (self._muted and not bypass_mute):
                 return
@@ -85,6 +88,11 @@ class SpeechService:
             ):
                 self.backend.stop()
             self._cv.notify()
+        callback = self.on_dropped
+        if callback is None:
+            return
+        for job in dropped:
+            callback(job.utterance)
 
     def set_volume(self, volume: float) -> None:
         """Queue a volume change. It is applied on the speech thread."""
