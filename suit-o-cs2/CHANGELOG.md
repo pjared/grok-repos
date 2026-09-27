@@ -10,6 +10,8 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+## [0.19.12] - 2026-09-27
+
 ### Fixed
 
 - Update no longer installs `requirements-dev.txt`. That file stays for tests and for CI. (`46fa874`)
