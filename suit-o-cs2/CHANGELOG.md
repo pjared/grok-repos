@@ -6,38 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Dates are Pacific Time. Each entry lists the short commit hash.
 
-New notes go under `## [Unreleased]`. Do not add a heading for today's date. Every push to `main` updates this file in that same commit. After the Suit-O tests pass on `main`, a release step moves Unreleased into `## [x.y.z] - YYYY-MM-DD`, writes that version into `pyproject.toml`, and tags `suit-o-vX.Y.Z`. Dated version headings are created only by that release step. It skips the cut when Unreleased is empty. The Update button only fast-forwards to the commit whose `suit-o-tests.yml` run passed. It does not commit or tag.
+New notes go under `## [Unreleased]`. Do not add a heading for today's date. Under Unreleased, each category appears once, in the order Added, Changed, Removed, Fixed. Add a new bullet under that heading instead of starting another one. Every push to `main` updates this file in that same commit. After the Suit-O tests pass on `main`, a release step moves Unreleased into `## [x.y.z] - YYYY-MM-DD`, writes that version into `pyproject.toml`, and tags `suit-o-vX.Y.Z`. Dated version headings are created only by that release step. It skips the cut when Unreleased is empty. The Update button only fast-forwards to the commit whose `suit-o-tests.yml` run passed. It does not commit or tag.
 
 ## [Unreleased]
 
-## [0.19.0] - 2026-09-27
-
 ### Fixed
 
-- A test that opens a Tk window skips itself when Tcl cannot create one, including a GitHub runner with no display. (`2288d7e`)
-- Startup closes a leftover log handler before it deletes `suit-o.log`, so Windows can remove the file. (`2288d7e`)
-- The Windows test run installs `tzdata` so the release step can date a version in Pacific time. (`2288d7e`)
+- Suit-O 0.19.0 lists each changelog category once, in the order Added, Changed, Removed, Fixed.
 
-### Changed
-
-- Voice synthesis uses NVIDIA CUDA or AMD ROCm when that PyTorch build is available, and the CPU otherwise. DirectML is detected and left unused, because Chatterbox does not run on it. The tab names the stack and not the graphics card. (`f7c802e`)
+## [0.19.0] - 2026-09-27
 
 ### Added
 
 - Lineup photos can be JPEG or WebP as well as PNG. Pillow is part of the base install. (`747417c`)
 - The first launch writes a random GSI token into `config.local.yaml` and, when the CS2 cfg is already outside the repo, into that file. The sample token stays in git. (`747417c`)
 
-### Fixed
+### Changed
 
-- Voice pre-rendering waits while GSI says the round phase is live, then continues. (`747417c`)
-- A voice cache file that is incomplete or unreadable uses the Windows voice. (`747417c`)
-- Window updates from worker threads run on the main thread. (`747417c`)
-- A broken PyTorch install greys out Voice Training and Clips instead of stopping the window from opening. (`747417c`)
-- Update reinstalls optional voice, clips, and chat requirements only when this PC already has them. (`747417c`)
-
-### Fixed
-
-- The menu greeting no longer repeats when a voice file is written, or when the window restarts in place. (`2326a59`)
+- Voice synthesis uses NVIDIA CUDA or AMD ROCm when that PyTorch build is available, and the CPU otherwise. DirectML is detected and left unused, because Chatterbox does not run on it. The tab names the stack and not the graphics card. (`f7c802e`)
+- The README and tests no longer name a personal headset or a home machine. Personal settings stay in gitignored `config.local.yaml`. (`3715752`)
 
 ### Removed
 
@@ -45,11 +32,16 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Eve
 
 ### Fixed
 
+- A test that opens a Tk window skips itself when Tcl cannot create one, including a GitHub runner with no display. (`2288d7e`)
+- Startup closes a leftover log handler before it deletes `suit-o.log`, so Windows can remove the file. (`2288d7e`)
+- The Windows test run installs `tzdata` so the release step can date a version in Pacific time. (`2288d7e`)
+- Voice pre-rendering waits while GSI says the round phase is live, then continues. (`747417c`)
+- A voice cache file that is incomplete or unreadable uses the Windows voice. (`747417c`)
+- Window updates from worker threads run on the main thread. (`747417c`)
+- A broken PyTorch install greys out Voice Training and Clips instead of stopping the window from opening. (`747417c`)
+- Update reinstalls optional voice, clips, and chat requirements only when this PC already has them. (`747417c`)
+- The menu greeting no longer repeats when a voice file is written, or when the window restarts in place. (`2326a59`)
 - Update fast-forwards to the exact commit whose `suit-o-tests.yml` run passed. A newer commit that landed after that check is not installed. (`0127af3`)
-
-### Changed
-
-- The README and tests no longer name a personal headset or a home machine. Personal settings stay in gitignored `config.local.yaml`. (`3715752`)
 
 ## [0.18.0] - 2026-09-27
 
