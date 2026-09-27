@@ -134,15 +134,22 @@ def _merge_ff_only(project: Path, runner: Runner, sha: str, before: str) -> Upda
     combined = f"{merged.stdout}\n{merged.stderr}"
     if merged.code != 0:
         return UpdateOutcome(False, False, explain_git_failure(combined))
-    if _already_current(combined):
-        return UpdateOutcome(True, False, "Already up to date.")
     after = runner(["git", "rev-parse", "HEAD"], repo)
     if after.code != 0:
         return UpdateOutcome(False, False, explain_git_failure(after.stdout + "\n" + after.stderr))
-    if after.stdout.strip() == before:
+    landed = after.stdout.strip()
+    if landed != sha:
+        checked = sha.strip()[:7] or sha
+        here = landed[:7] or "(none)"
+        return UpdateOutcome(
+            False,
+            False,
+            f"Update stopped. The checkout is {here}, not the checked commit {checked}.",
+        )
+    if landed == before or _already_current(combined):
         return UpdateOutcome(True, False, "Already up to date.")
     diff = runner(
-        ["git", "diff", "--name-only", before, after.stdout.strip()],
+        ["git", "diff", "--name-only", before, landed],
         repo,
     )
     files = [line.strip() for line in diff.stdout.splitlines() if line.strip()]

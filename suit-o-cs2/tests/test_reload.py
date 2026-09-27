@@ -614,6 +614,40 @@ def test_update_skips_an_untested_release_commit(tmp_path: Path):
     assert "Tests failed" in refused.message
 
 
+def test_update_errors_when_checkout_is_not_the_checked_commit(tmp_path: Path):
+    """A merge that leaves HEAD somewhere else must not be reported as Updated."""
+
+    project = tmp_path / "suit-o-cs2"
+    project.mkdir()
+    (tmp_path / ".git").mkdir()
+    diffs: list[list[str]] = []
+
+    def runner(args, _cwd):
+        if args == ["git", "rev-parse", "HEAD"]:
+            return CommandResult(0, "aaa\n", "")
+        if args == ["git", "fetch", "origin"]:
+            return CommandResult(0, "", "")
+        if args == ["git", "rev-parse", "origin/main"]:
+            return CommandResult(0, "bbb\n", "")
+        if args[:2] == ["git", "rev-list"]:
+            return CommandResult(0, "", "")
+        if args[:3] == ["git", "merge", "--ff-only"]:
+            return CommandResult(0, "Already up to date.\n", "")
+        if args[:2] == ["git", "diff"]:
+            diffs.append(args)
+            return CommandResult(0, "", "")
+        return CommandResult(1, "", f"unexpected {args}")
+
+    outcome = run_git_update(project, runner, check=lambda _sha: "success")
+    assert outcome.ok is False
+    assert outcome.changed is False
+    assert outcome.requirements == ()
+    assert "aaa" in outcome.message
+    assert "bbb" in outcome.message
+    assert "checked commit" in outcome.message
+    assert diffs == []
+
+
 def test_release_job_starts_tests_on_the_cut_commit():
     import yaml
 
