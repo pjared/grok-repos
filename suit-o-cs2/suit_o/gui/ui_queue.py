@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import queue
 import tkinter as tk
 from collections.abc import Callable
+
+logger = logging.getLogger(__name__)
 
 
 class UiQueue:
@@ -24,23 +27,23 @@ class UiQueue:
         self._items.put(callback)
 
     def drain(self) -> None:
-        """Run queued work. The window pump calls this on the Tk thread."""
+        """Run queued work. One failure is logged and the rest still run."""
 
         while True:
             try:
                 callback = self._items.get_nowait()
             except queue.Empty:
                 return
-            callback()
+            try:
+                callback()
+            except Exception:
+                logger.exception("UI update failed")
 
     def _pump(self) -> None:
         widget = self._widget
         if widget is None:
             return
-        try:
-            self.drain()
-        except tk.TclError:
-            return
+        self.drain()
         try:
             widget.after(30, self._pump)
         except tk.TclError:

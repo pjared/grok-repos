@@ -10,6 +10,10 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+### Fixed
+
+- A failed window update is logged and the queue keeps running, so Update, chat, and Voice Training can still reach the window.
+
 ## [0.19.4] - 2026-09-27
 
 ### Fixed
