@@ -58,7 +58,7 @@ logger = logging.getLogger(__name__)
 
 
 class SuitOWindow:
-    def __init__(self, app: SuitOApp) -> None:
+    def __init__(self, app: SuitOApp, restart_state: RestartState | None = None) -> None:
         self.app = app
         self._closed = False
         self._ui_ready = False
@@ -76,6 +76,7 @@ class SuitOWindow:
         self._pending_noted = False
         self._version_text = _app_version()
         self._update_previous_version = ""
+        self._restart_state = restart_state
         config_path = app.config_path or (PROJECT_ROOT / "config.yaml")
         self._watcher = FileWatcher(
             PROJECT_ROOT,
@@ -456,9 +457,10 @@ class SuitOWindow:
         self._show_notice("Reloaded")
 
     def _restore_restart_state(self) -> None:
-        if self.app.config_path is None:
-            return
-        state = consume_restart_state(self.app.config_path)
+        state = self._restart_state
+        self._restart_state = None
+        if state is None and self.app.config_path is not None:
+            state = consume_restart_state(self.app.config_path)
         if state is None:
             return
         self.root.geometry(f"{state.width}x{state.height}{state.x:+d}{state.y:+d}")
@@ -665,6 +667,7 @@ class SuitOWindow:
                     tab=tab,
                     notice=notice,
                     previous_version=self._previous_version_for_restart(),
+                    greeted=bool(self.app.detector.greeted_this_session),
                 ),
             )
             self._update_previous_version = ""

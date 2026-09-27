@@ -14,6 +14,7 @@ from suit_o.reload import (
     ChangeDebouncer,
     FileWatcher,
     RestartState,
+    change_kind,
     choose_reload,
     consume_restart_state,
     gui_restart_argv,
@@ -31,6 +32,36 @@ from suit_o.update import (
 )
 
 CHAT = "Headset Earphone (Example Chat)"
+
+
+def test_watcher_ignores_renders_clips_recordings_and_lineup_data(tmp_path: Path):
+    root = tmp_path
+    (root / "voices" / "hero" / "cache").mkdir(parents=True)
+    (root / "voices" / "hero" / "clips").mkdir()
+    (root / "voices" / "_session").mkdir()
+    (root / "lineup-data").mkdir()
+    config_path = root / "config.yaml"
+    config_path.write_text("server: {}\n", encoding="utf-8")
+    kwargs = {"root": root, "config_path": config_path, "lines_path": None}
+    assert change_kind(root / "voices" / "hero" / "cache" / "line.wav", **kwargs) is None
+    assert change_kind(root / "voices" / "hero" / "clips" / "take.wav", **kwargs) is None
+    assert change_kind(root / "voices" / "_session" / "take.wav", **kwargs) is None
+    assert change_kind(root / "voices" / "session" / "take.wav", **kwargs) is None
+    assert change_kind(root / "lineup-data" / "pack.png", **kwargs) is None
+    profile = root / "voices" / "hero" / "profile.yaml"
+    profile.parent.mkdir(parents=True, exist_ok=True)
+    assert change_kind(profile, **kwargs) == "content"
+
+    watcher = FileWatcher(root, config_path=config_path, lines_path=None, delay=0.5)
+    assert watcher.scan(0.0) is None
+    (root / "voices" / "hero" / "cache" / "line.wav").write_bytes(b"RIFF")
+    (root / "voices" / "hero" / "clips" / "take.wav").write_bytes(b"RIFF")
+    (root / "voices" / "_session" / "take.wav").write_bytes(b"RIFF")
+    assert watcher.scan(1.0) is None
+    assert watcher.scan(1.6) is None
+    profile.write_text("name: Hero\n", encoding="utf-8")
+    assert watcher.scan(2.0) is None
+    assert watcher.scan(2.6) == ["content"]
 
 
 def test_debouncer_waits_for_a_quiet_gap_then_fires_once():
@@ -190,7 +221,12 @@ def test_restart_state_round_trip_and_launch_argv(tmp_path: Path):
         "Reloaded",
     )
     assert state.previous_version == "0.17.0"
+    assert state.greeted is False
     assert consume_restart_state(path) is None
+    write_restart_state(path, RestartState(1, 2, 3, 4, 0, "Reloaded", "", True))
+    carried = consume_restart_state(path)
+    assert carried is not None
+    assert carried.greeted is True
     argv = gui_restart_argv(path)
     assert argv[1:4] == ["-m", "suit_o.gui", "--config"]
     assert argv[-1] == str(path)

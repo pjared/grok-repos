@@ -812,7 +812,7 @@ class SuitOApp:
         try:
             self.config = loaded
             self.lines = provider
-            self.detector = EventDetector(loaded.thresholds)
+            self.detector.set_thresholds(loaded.thresholds)
             self.speech.preempt_min_priority = loaded.preempt_min_priority
             self.speech.set_muted(loaded.mute)
             self.speech.set_volume(loaded.speech.volume)

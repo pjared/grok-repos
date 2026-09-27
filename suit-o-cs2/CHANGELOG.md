@@ -10,6 +10,10 @@ New notes go under `## [Unreleased]`. Every push to `main` updates this file in 
 
 ## [Unreleased]
 
+### Fixed
+
+- The menu greeting no longer repeats when a voice file is written, or when the window restarts in place.
+
 ### Removed
 
 - The `suit-o.log` file. Startup deletes a leftover log. Messages stay in the window, or on the console when you start Suit-O from a terminal. (`6440bbb`)

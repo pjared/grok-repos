@@ -24,9 +24,10 @@ _MULTI_KILL = (
 
 
 class EventDetector:
-    def __init__(self, thresholds: Thresholds) -> None:
+    def __init__(self, thresholds: Thresholds, *, greeted: bool = False) -> None:
         self._thresholds = thresholds
         self._seen = False
+        self._greeted_this_session = bool(greeted)
         self._map_name: str | None = None
         self._map_phase: str | None = None
         self._round_phase: str | None = None
@@ -37,11 +38,28 @@ class EventDetector:
         self._map_present = False
         self._greeting_after_match = False
 
+    @property
+    def greeted_this_session(self) -> bool:
+        return self._greeted_this_session
+
+    def mark_greeted(self) -> None:
+        """The menu greeting already happened in this process's session."""
+
+        self._greeted_this_session = True
+
+    def set_thresholds(self, thresholds: Thresholds) -> None:
+        self._thresholds = thresholds
+
     def update(self, snap: Snapshot) -> list[DetectedEvent]:
         if not self._seen:
             self._remember(snap)
             self._seen = True
-            if snap.own is not None and _menu_shell(snap.own.activity):
+            if (
+                not self._greeted_this_session
+                and snap.own is not None
+                and _menu_shell(snap.own.activity)
+            ):
+                self._greeted_this_session = True
                 return [self._event(EventType.MENU_GREETING, snap.own)]
             return []
 
@@ -222,6 +240,7 @@ class EventDetector:
             return
         if map_gone and in_shell:
             events.append(self._event(EventType.MENU_GREETING, self._own))
+            self._greeted_this_session = True
             self._greeting_after_match = False
             return
         if map_gone:
@@ -229,6 +248,7 @@ class EventDetector:
             return
         if self._greeting_after_match and in_shell:
             events.append(self._event(EventType.MENU_GREETING, self._own))
+            self._greeted_this_session = True
             self._greeting_after_match = False
 
     def _own_after(self, snap: Snapshot) -> OwnPlayer | None:

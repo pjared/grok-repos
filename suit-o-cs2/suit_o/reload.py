@@ -19,6 +19,7 @@ from suit_o.config import DEFAULT_CONFIG_PATH
 from suit_o.local_config import local_config_path
 
 RESTART_STATE_NAME = ".suit-o-restart.json"
+_WATCH_SKIP = frozenset({"cache", "clips", "_session", "session", "lineup-data", "__pycache__"})
 ACTIVITY_HANDOFF_NAME = "suit-o-activity-handoff.json"
 ACTIVITY_HANDOFF_LIMIT = 200
 
@@ -32,6 +33,7 @@ class RestartState:
     tab: int
     notice: str
     previous_version: str = ""
+    greeted: bool = False
 
 
 class ChangeDebouncer:
@@ -78,6 +80,16 @@ def choose_reload(kinds: list[str]) -> str:
     return "none"
 
 
+def _watch_skipped(path: Path, root: Path) -> bool:
+    """Voice renders, clips, recordings, and local lineup files are not settings."""
+
+    try:
+        relative = Path(path).resolve().relative_to(Path(root).resolve())
+    except ValueError:
+        return False
+    return any(part in _WATCH_SKIP for part in relative.parts[:-1])
+
+
 def change_kind(
     path: Path,
     *,
@@ -89,6 +101,8 @@ def change_kind(
 
     resolved = path.resolve()
     if resolved.suffix == ".pyc" or "__pycache__" in resolved.parts:
+        return None
+    if _watch_skipped(resolved, root):
         return None
     config_dir = Path(config_path).resolve().parent
     if resolved.parent == config_dir and resolved.name in {"config.yaml", "config.local.yaml"}:
@@ -175,6 +189,8 @@ class FileWatcher:
                     continue
                 if "__pycache__" in path.parts or path.suffix == ".pyc":
                     continue
+                if _watch_skipped(path, self.root):
+                    continue
                 found.append(path)
         return found
 
@@ -193,6 +209,7 @@ def write_restart_state(config_path: Path, state: RestartState) -> None:
         "tab": int(state.tab),
         "notice": state.notice,
         "previous_version": state.previous_version,
+        "greeted": bool(state.greeted),
     }
     path.write_text(json.dumps(payload), encoding="utf-8")
 
@@ -214,6 +231,7 @@ def consume_restart_state(config_path: Path) -> RestartState | None:
             tab=int(raw["tab"]),
             notice=str(raw.get("notice") or "Reloaded"),
             previous_version=str(raw.get("previous_version") or ""),
+            greeted=bool(raw.get("greeted") or False),
         )
     except (OSError, ValueError, KeyError, TypeError):
         state = None

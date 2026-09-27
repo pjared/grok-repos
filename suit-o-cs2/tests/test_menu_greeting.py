@@ -19,6 +19,37 @@ def _types(detector: EventDetector, payload: dict) -> list[EventType]:
     return [event.type for event in detector.update(snapshot)]
 
 
+def test_restart_flag_skips_only_the_opening_greeting():
+    detector = EventDetector(thresholds(), greeted=True)
+    menu = dict(activity="menu", include_map=False, include_round=False)
+    assert EventType.MENU_GREETING not in _types(detector, make_payload(**menu))
+    assert EventType.MENU_GREETING not in _types(detector, make_payload(map_phase="live"))
+    returned = _types(detector, make_payload(**menu))
+    assert EventType.MENU_GREETING in returned
+
+
+def test_reload_keeps_the_detector_and_does_not_greet_again(tmp_path):
+    path = tmp_path / "config.yaml"
+    text = DEFAULT_CONFIG_PATH.read_text(encoding="utf-8")
+    text = text.replace("lines/lines.yaml", (DEFAULT_CONFIG_PATH.parent / "lines" / "lines.yaml").as_posix())
+    path.write_text(text, encoding="utf-8")
+    app = SuitOApp(load_config(path), backend=StubSpeechBackend(), config_path=path)
+    menu = dict(activity="menu", include_map=False, include_round=False)
+    app._handle(make_payload(**menu))
+    detector = app.detector
+    assert detector.greeted_this_session is True
+    applied = app.reload_content()
+    assert applied.applied is True
+    assert app.detector is detector
+    app._handle(make_payload(**menu))
+    spoken = [
+        item.message
+        for item in app.activity()
+        if item.message.startswith("menu_greeting: ") and "skipped" not in item.message
+    ]
+    assert len(spoken) == 1
+
+
 def test_first_connect_greets_once_until_a_match_ends():
     detector = EventDetector(thresholds())
     menu = dict(activity="menu", include_map=False, include_round=False)

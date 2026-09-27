@@ -13,7 +13,7 @@ from pathlib import Path
 
 from suit_o.config import DEFAULT_CONFIG_PATH, ConfigError, load_config
 from suit_o.local_config import migrate_user_settings
-from suit_o.reload import consume_activity_handoff, write_activity_handoff
+from suit_o.reload import consume_activity_handoff, consume_restart_state, write_activity_handoff, write_restart_state
 
 logger = logging.getLogger("suit_o")
 
@@ -58,17 +58,24 @@ def _run(config_path: Path, *, start_muted: bool) -> int:
 
     from suit_o.app import SuitOApp
 
+    restart = consume_restart_state(config_path)
     try:
         app = SuitOApp(config, config_path=config_path)
     except NotImplementedError as exc:
+        if restart is not None:
+            write_restart_state(config_path, restart)
         logger.error("%s", exc)
         _show_fatal(str(exc))
         return 2
+    if restart is not None and restart.greeted:
+        app.detector.mark_greeted()
 
     app.restore_activity(consume_activity_handoff())
     try:
         app.start(console=False)
     except OSError as exc:
+        if restart is not None:
+            write_restart_state(config_path, restart)
         write_activity_handoff(
             [(entry.at, entry.message) for entry in app.activity()],
             secret=config.server.token,
@@ -93,7 +100,7 @@ def _run(config_path: Path, *, start_muted: bool) -> int:
         return 2
 
     try:
-        SuitOWindow(app).run()
+        SuitOWindow(app, restart_state=restart).run()
     finally:
         app.stop()
     return 0
