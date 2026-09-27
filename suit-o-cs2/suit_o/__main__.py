@@ -36,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
             migrate_user_settings(args.config)
         except (ConfigError, OSError, ValueError) as exc:
             logger.warning("Could not move personal settings into config.local.yaml: %s", exc)
-        _ensure_personal_token(args.config)
+        token_warning = _ensure_personal_token(args.config)
         config = load_config(args.config)
     except (ConfigError, OSError, ValueError) as exc:
         print(f"Config error: {exc}", file=sys.stderr)
@@ -51,6 +51,8 @@ def main(argv: list[str] | None = None) -> int:
     except NotImplementedError as exc:
         print(str(exc), file=sys.stderr)
         return 2
+    if token_warning:
+        app.note(token_warning)
 
     try:
         app.start(console=True)
@@ -80,15 +82,19 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _ensure_personal_token(config_path: Path) -> None:
-    """Write a random GSI token once. The token is not logged."""
+def _ensure_personal_token(config_path: Path) -> str:
+    """Keep or write the GSI token. The token is not logged. Returns a window warning."""
 
     try:
         from suit_o.gsi_token import ensure_personal_token
 
-        ensure_personal_token(config_path)
+        warning = ensure_personal_token(config_path).warning
     except Exception:
         logger.warning("Could not write a personal GSI token.")
+        return ""
+    if warning:
+        logger.warning("%s", warning)
+    return warning
 
 
 if __name__ == "__main__":

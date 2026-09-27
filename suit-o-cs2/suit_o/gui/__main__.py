@@ -46,7 +46,7 @@ def _run(config_path: Path, *, start_muted: bool) -> int:
             migrate_user_settings(config_path)
         except (ConfigError, OSError, ValueError) as exc:
             logger.warning("Could not move personal settings into config.local.yaml: %s", exc)
-        _ensure_personal_token(config_path)
+        token_warning = _ensure_personal_token(config_path)
         config = load_config(config_path)
     except (ConfigError, OSError, ValueError) as exc:
         logger.error("Config error: %s", exc)
@@ -70,6 +70,8 @@ def _run(config_path: Path, *, start_muted: bool) -> int:
         return 2
     if restart is not None and restart.greeted:
         app.detector.mark_greeted()
+    if token_warning:
+        app.note(token_warning)
 
     app.restore_activity(consume_activity_handoff())
     try:
@@ -107,15 +109,19 @@ def _run(config_path: Path, *, start_muted: bool) -> int:
     return 0
 
 
-def _ensure_personal_token(config_path: Path) -> None:
-    """Write a random GSI token once. The token is not logged."""
+def _ensure_personal_token(config_path: Path) -> str:
+    """Keep or write the GSI token. The token is not logged. Returns a window warning."""
 
     try:
         from suit_o.gsi_token import ensure_personal_token
 
-        ensure_personal_token(config_path)
+        warning = ensure_personal_token(config_path).warning
     except Exception:
         logger.warning("Could not write a personal GSI token.")
+        return ""
+    if warning:
+        logger.warning("%s", warning)
+    return warning
 
 
 def _configure_logging() -> None:

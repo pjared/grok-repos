@@ -10,6 +10,10 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+### Fixed
+
+- Suit-O keeps an existing GSI key. A new key is saved only after CS2's gamestate config was written, including a Steam library that is not on the default drive. If that file cannot be found, the window says so.
+
 ## [0.19.5] - 2026-09-27
 
 ### Fixed
