@@ -12,7 +12,7 @@ New notes go under `## [Unreleased]`. Every push to `main` updates this file in 
 
 ### Added
 
-- The window shows the Suit-O version from `pyproject.toml`. After Update pulls a newer build, What's new lists the changelog sections between the version you had and the one you just got. The same panel opens from a button any time. Versions are cut on `main` after tests pass, not by the Update button.
+- The window shows the Suit-O version from `pyproject.toml`. After Update pulls a newer build, What's new lists the changelog sections between the version you had and the one you just got. The same panel opens from a button any time. Versions are cut on `main` after tests pass, not by the Update button. (`c73331c`)
 
 ## [0.17.0] - 2026-09-27
 
