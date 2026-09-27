@@ -12,7 +12,7 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ### Fixed
 
-- A saved GSI key is copied into every CS2 config that still has the sample key. A config that already has a different key is left unchanged, and the window says so.
+- A saved GSI key is copied into every CS2 config that still has the sample key. A config that already has a different key is left unchanged, and the window says so. (`f9fdb3d`)
 
 ## [0.19.14] - 2026-09-27
 
