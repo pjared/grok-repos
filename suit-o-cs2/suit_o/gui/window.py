@@ -189,7 +189,7 @@ class SuitOWindow:
         self.update_button.grid(row=0, column=2, sticky="w", padx=(8, 0))
         self.update_status = ttk.Label(buttons, text="")
         self.update_status.grid(row=0, column=3, sticky="w", padx=(8, 0))
-        self.check_updates = tk.BooleanVar(value=app.config.updates.check_on_launch)
+        self.check_updates = tk.BooleanVar(value=self.app.config.updates.check_on_launch)
         ttk.Checkbutton(
             buttons,
             text="Check for updates when Suit-O opens",
