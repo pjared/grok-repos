@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import sys
 import threading
@@ -128,6 +129,9 @@ class SuitOApp:
         self._activity: deque[Activity] = deque(maxlen=_LOG_LIMIT)
         self._activity_seq = 0
         self._activity_lock = threading.Lock()
+        self._lines_stamp: str | None = None
+        self._lines_checked = 0.0
+        self._renderers: list[CloneSpeechBackend] = []
 
     def start(self, *, console: bool = False) -> None:
         if self._started:
@@ -136,8 +140,10 @@ class SuitOApp:
         self.speech.start()
         self.speech.apply_tuning(self.current_tuning())
         self.speech.set_muted(bool(getattr(self.lines, "muted", self.config.mute)))
+        self._lines_stamp = self._stock_lines_stamp()
         if isinstance(self.backend, CloneSpeechBackend):
-            self._warm_clone(self.backend)
+            self.backend.apply_tuning(self.current_tuning())
+            self._prerender_clone(self.backend)
         self._worker = threading.Thread(target=self._worker_loop, name="suit-o-gsi", daemon=True)
         self._worker.start()
         self._httpd = GsiServer(
@@ -377,7 +383,10 @@ class SuitOApp:
                 voices_dir=str(self.voices_dir),
             )
             self._record(f"preview: {line}")
-            self.speech.preview_with(line, override, self._backend_factory(preview_settings))
+            preview_backend = self._backend_factory(preview_settings)
+            if isinstance(preview_backend, CloneSpeechBackend):
+                preview_backend.allow_live_synthesis()
+            self.speech.preview_with(line, override, preview_backend)
             return line
         override = None if tuning is None else self._resolve_tuning(tuning)
         self._record(f"preview: {line}")
@@ -394,17 +403,77 @@ class SuitOApp:
         speech.emphasis = applied.emphasis
 
     def _install_backend(self) -> None:
-        self.speech.apply_tuning(self.current_tuning())
+        tuning = self.current_tuning()
+        self.speech.apply_tuning(tuning)
         if self.config.speech.backend == "stub":
             return
-        if self._backend_matches():
+        if not self._backend_matches():
+            self.config.speech.voices_dir = str(self.voices_dir)
+            backend = self._backend_factory(self.config.speech)
+            self.speech.set_backend(backend)
+            self.backend = backend
+        if isinstance(self.backend, CloneSpeechBackend):
+            self.backend.apply_tuning(tuning)
+            self._prerender_clone(self.backend)
+
+    def prerender_profile(self, name: str) -> None:
+        """Render every stock line for a voice that was just built.
+
+        Uses the current rate, pitch, pause, and emphasis. Does not switch
+        the in-game backend. A later tuning change renders the lines again.
+        """
+
+        cleaned = name.strip()
+        if not cleaned:
             return
-        self.config.speech.voices_dir = str(self.voices_dir)
-        backend = self._backend_factory(self.config.speech)
-        self.speech.set_backend(backend)
-        self.backend = backend
-        if isinstance(backend, CloneSpeechBackend):
-            self._warm_clone(backend)
+        if (
+            isinstance(self.backend, CloneSpeechBackend)
+            and self.config.speech.backend == "clone"
+            and self.config.speech.voice.strip().casefold() == cleaned.casefold()
+        ):
+            self._prerender_clone(self.backend)
+            return
+        if not runtime_status().installed:
+            self._record(
+                runtime_status().summary
+                + " Until those packages are installed, this voice uses the Windows voice in a match."
+            )
+            return
+        tuning = self.current_tuning()
+        settings = SpeechConfig(
+            backend="clone",
+            voice=cleaned,
+            rate=tuning.rate,
+            volume=tuning.volume,
+            output_device=self.config.speech.output_device,
+            pitch=tuning.pitch,
+            pause_ms=tuning.pause_ms,
+            emphasis=tuning.emphasis,
+            voices_dir=str(self.voices_dir),
+        )
+        backend = self._backend_factory(settings)
+        if not isinstance(backend, CloneSpeechBackend):
+            return
+        self._renderers.append(backend)
+        backend.prerender(stock_line_texts(self.config.lines_path))
+        self._record(
+            f"Rendering every stock line for {cleaned}. "
+            "Matches play those files only and do not synthesize live."
+        )
+
+    def poll_stock_lines(self) -> None:
+        """Re-render the active cloned voice when ``lines.yaml`` changes."""
+
+        stamp = self._stock_lines_stamp()
+        if stamp is None:
+            return
+        previous = self._lines_stamp
+        self._lines_stamp = stamp
+        if previous is None or previous == stamp:
+            return
+        if isinstance(self.backend, CloneSpeechBackend) and self.config.speech.backend == "clone":
+            self._record("Stock lines changed. Rendering them again for the cloned voice.")
+            self._prerender_clone(self.backend)
 
     def _backend_matches(self) -> bool:
         current = self.speech.backend
@@ -415,13 +484,26 @@ class SuitOApp:
             return isinstance(current, Pyttsx3Backend)
         return True
 
-    def _warm_clone(self, backend: CloneSpeechBackend) -> None:
+    def _prerender_clone(self, backend: CloneSpeechBackend) -> None:
         status = runtime_status()
         if not status.installed:
-            self._record(status.summary)
+            self._record(
+                status.summary
+                + " Missing stock lines will use the Windows voice until the clone is rendered."
+            )
             return
-        backend.warm_stock_lines(stock_line_texts(self.config.lines_path))
-        self._record("Caching stock lines for the cloned voice")
+        backend.prerender(stock_line_texts(self.config.lines_path))
+        self._record(
+            "Rendering every stock line for the cloned voice. "
+            "Matches play only those files, with no live synthesis."
+        )
+
+    def _stock_lines_stamp(self) -> str | None:
+        path = self.config.lines_path
+        try:
+            return hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError:
+            return None
 
     def _resolve_tuning(self, tuning: VoiceTuning, *, names: list[str] | None = None) -> VoiceTuning:
         try:
@@ -532,9 +614,19 @@ class SuitOApp:
         self.speech.stop()
         if self._http_thread is not None:
             self._http_thread.join(timeout=2)
+        for renderer in self._renderers:
+            renderer.close()
+        self._renderers.clear()
 
     def _worker_loop(self) -> None:
         while not self._stop.is_set():
+            now = time.monotonic()
+            if now - self._lines_checked >= 1:
+                self._lines_checked = now
+                try:
+                    self.poll_stock_lines()
+                except Exception:
+                    logger.exception("Could not check the stock lines file")
             try:
                 item = self._queue.get(timeout=0.1)
             except Empty:

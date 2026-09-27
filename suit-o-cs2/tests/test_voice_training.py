@@ -14,8 +14,9 @@ from suit_o.speech.factory import create_backend
 from suit_o.speech.service import SpeechService
 from suit_o.speech.stub import StubSpeechBackend
 from suit_o.speech.tuning import VoiceTuning
+from suit_o.lines.provider import stock_line_texts
 from suit_o.voice.profile import clone_label, find_profile, is_clone_label, list_profiles, slugify
-from suit_o.voice.runtime import INSTALL_HINT, runtime_status
+from suit_o.voice.runtime import INSTALL_HINT, RuntimeStatus, runtime_status
 from suit_o.voice.script import load_script
 from suit_o.voice.session import RecordingSession, SessionError, silent_wav
 from suit_o.voice.wav import excerpt, read_wav, shape_waveform, write_wav
@@ -162,14 +163,73 @@ def test_clone_backend_is_selectable_without_the_optional_stack(tmp_path: Path):
 
     _write_profile(tmp_path / "voices")
     settings.voices_dir = str(tmp_path / "voices")
-    missing = CloneSpeechBackend(settings)
-    try:
-        missing.speak("Hello")
-        spoke = False
-    except RuntimeError as exc:
-        spoke = True
-        assert "requirements-voice.txt" in str(exc)
-    assert spoke
+    fallback = _Fallback()
+    missing = CloneSpeechBackend(settings, fallback=fallback)
+    assert missing.speak("Hello") is True
+    assert fallback.spoken == ["Hello"]
+    assert fallback.tunings[0].voice == ""
+    assert "torch" not in sys.modules
+    assert "chatterbox" not in sys.modules
+
+
+def test_match_playback_uses_only_prerendered_files(tmp_path: Path):
+    voices = tmp_path / "voices"
+    _write_profile(voices)
+    calls: list[str] = []
+    played: list[tuple[str, float]] = []
+
+    def synthesize(text: str, prompt: Path, emphasis: str):
+        calls.append(f"{emphasis}:{text}")
+        return [0.2, -0.2, 0.2, -0.2], 8000
+
+    def player(samples, rate, device, volume, cancel):
+        del samples, rate, cancel
+        played.append((device, volume))
+        return True
+
+    settings = SpeechConfig(
+        backend="clone",
+        voice="Suit-O",
+        rate=185,
+        volume=0.5,
+        output_device="Headphones",
+        voices_dir=str(voices),
+    )
+    fallback = _Fallback()
+    backend = CloneSpeechBackend(
+        settings,
+        synthesizer=synthesize,
+        player=player,
+        fallback=fallback,
+    )
+    backend.prerender(["Cached line", "Hello"], wait=True)
+    assert calls == ["none:Cached line", "none:Hello"]
+    assert backend.speak("Hello") is True
+    assert backend.speak("Hello") is True
+    assert calls == ["none:Cached line", "none:Hello"]
+    assert played[-1] == ("Headphones", 0.5)
+    assert backend.speak("Not in the cache") is True
+    assert fallback.spoken == ["Not in the cache"]
+    assert calls == ["none:Cached line", "none:Hello"]
+
+    tuned = VoiceTuning(voice="Suit-O", rate=160, pitch=2, pause_ms=40, emphasis="strong")
+    assert cache_key("Hello", VoiceTuning()) != cache_key("Hello", tuned)
+    backend.apply_tuning(tuned)
+    backend.prerender(["Hello"], wait=True)
+    assert calls[-1] == "strong:Hello"
+
+    preview = CloneSpeechBackend(
+        settings,
+        synthesizer=synthesize,
+        player=player,
+        fallback=fallback,
+    )
+    preview.allow_live_synthesis()
+    before = len(calls)
+    assert preview.speak("preview clone", tuning=tuned) is True
+    assert len(calls) == before + 1
+    assert calls[-1] == "strong:preview clone"
+    assert fallback.spoken == ["Not in the cache"]
 
 
 def test_clone_backend_caches_lines_and_preview_does_not_replace_the_live_backend(tmp_path: Path):
@@ -195,25 +255,35 @@ def test_clone_backend_caches_lines_and_preview_does_not_replace_the_live_backen
         output_device="Headphones",
         voices_dir=str(voices),
     )
-    backend = CloneSpeechBackend(settings, synthesizer=synthesize, player=player)
-    assert backend.speak("Hello") is True
+    fallback = _Fallback()
+    backend = CloneSpeechBackend(
+        settings,
+        synthesizer=synthesize,
+        player=player,
+        fallback=fallback,
+    )
+    backend.prerender(["Hello"], wait=True)
     assert backend.speak("Hello") is True
     assert calls == ["none:Hello"]
     assert played[-1] == ("Headphones", 0.5)
 
     tuned = VoiceTuning(voice="Suit-O", rate=160, pitch=2, pause_ms=40, emphasis="strong")
-    assert cache_key("Hello", VoiceTuning()) != cache_key("Hello", tuned)
-    backend.warm_stock_lines(["Cached line", "Hello"], wait=True)
-    assert "none:Cached line" in calls
-    assert calls.count("none:Hello") == 1
+    preview = CloneSpeechBackend(
+        settings,
+        synthesizer=synthesize,
+        player=player,
+        fallback=fallback,
+    )
+    preview.allow_live_synthesis()
 
     stub = StubSpeechBackend()
     service = SpeechService(stub, preempt_min_priority=70)
     service.start()
     try:
         played_before = len(played)
-        service.preview_with("preview clone", tuned, backend)
+        service.preview_with("preview clone", tuned, preview)
         assert service.wait_until(lambda: len(played) > played_before, 2)
+        assert calls[-1] == "strong:preview clone"
         assert stub.spoken == []
         service.submit(Utterance("kill", "game", 36))
         assert service.wait_until(lambda: stub.spoken == ["game"], 2)
@@ -276,6 +346,101 @@ def test_app_keeps_stub_speech_until_a_real_clone_backend_is_requested(tmp_path:
         refused = True
     assert refused
     assert path.read_bytes() == before
+
+
+def test_app_prerenders_when_the_voice_tuning_or_stock_lines_change(tmp_path: Path, monkeypatch):
+    voices = tmp_path / "voices"
+    _write_profile(voices)
+    lines_path = tmp_path / "lines.yaml"
+    lines_path.write_text(
+        "events:\n  round_start:\n    - Hello from the stock file.\n",
+        encoding="utf-8",
+    )
+    path = tmp_path / "config.yaml"
+    path.write_bytes(DEFAULT_CONFIG_PATH.read_bytes())
+    calls: list[str] = []
+
+    def factory(settings: SpeechConfig) -> CloneSpeechBackend:
+        return CloneSpeechBackend(
+            settings,
+            synthesizer=lambda text, prompt, emphasis: calls.append(text) or ([0.1, -0.1], 8000),
+            player=lambda samples, rate, device, volume, cancel: True,
+            fallback=_Fallback(),
+        )
+
+    monkeypatch.setattr(
+        "suit_o.app.runtime_status",
+        lambda: RuntimeStatus(True, "cpu", "Chatterbox on CPU"),
+    )
+    config = load_config(DEFAULT_CONFIG_PATH)
+    config.lines_path = lines_path
+    config.server.port = 0
+    app = SuitOApp(
+        config,
+        backend=StubSpeechBackend(),
+        config_path=path,
+        voices_dir=voices,
+        backend_factory=factory,
+    )
+    app.start()
+    try:
+        app.prerender_profile("Suit-O")
+        renderer = app._renderers[-1]
+        assert renderer.wait_prerender(2)
+        assert calls == ["Hello from the stock file."]
+        calls.clear()
+
+        app.apply_saved_voice(VoiceTuning(rate=170, pitch=1, emphasis="mild"), "Clone: Suit-O")
+        assert app.speech.wait_until(lambda: isinstance(app.speech.backend, CloneSpeechBackend), 2)
+        live = app.speech.backend
+        assert isinstance(live, CloneSpeechBackend)
+        assert live.wait_prerender(2)
+        assert calls == ["Hello from the stock file."]
+        assert live.speak("Hello from the stock file.") is True
+        assert live.speak("A map-specific line") is True
+        assert live.fallback_spoken == ["A map-specific line"]
+        assert calls == ["Hello from the stock file."]
+
+        calls.clear()
+        lines_path.write_text(
+            "events:\n  round_start:\n    - Hello from the stock file.\n    - A second stock line.\n",
+            encoding="utf-8",
+        )
+        app.poll_stock_lines()
+        assert live.wait_prerender(2)
+        assert stock_line_texts(lines_path) == [
+            "Hello from the stock file.",
+            "A second stock line.",
+        ]
+        assert calls == ["A second stock line."]
+    finally:
+        app.stop()
+
+
+class _Fallback:
+    def __init__(self) -> None:
+        self.spoken: list[str] = []
+        self.tunings: list[VoiceTuning | None] = []
+
+    def speak(self, text: str, tuning: VoiceTuning | None = None) -> bool:
+        self.spoken.append(text)
+        self.tunings.append(tuning)
+        return True
+
+    def stop(self) -> None:
+        return None
+
+    def close(self) -> None:
+        return None
+
+    def set_output_device(self, name: str) -> None:
+        return None
+
+    def set_volume(self, volume: float) -> None:
+        return None
+
+    def apply_tuning(self, tuning: object) -> None:
+        return None
 
 
 def _write_profile(root: Path) -> None:

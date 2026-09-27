@@ -1,4 +1,4 @@
-"""Chatterbox synthesis. Imported only when a cloned line is actually spoken."""
+"""Chatterbox synthesis. Imported only while pre-rendering or previewing a line."""
 
 from __future__ import annotations
 
@@ -19,12 +19,37 @@ def exaggeration_for(emphasis: str) -> float:
     return _EXAGGERATION.get(emphasis, 0.5)
 
 
+def release_model() -> None:
+    """Drop the loaded model so a match does not keep the GPU resident.
+
+    Safe to call when the optional stack was never imported. Does not download
+    weights.
+    """
+
+    global _MODEL, _MODEL_DEVICE
+    with _LOCK:
+        model = _MODEL
+        _MODEL = None
+        _MODEL_DEVICE = ""
+    del model
+    try:
+        import torch
+    except ImportError:
+        return
+    try:
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        return
+
+
 def synthesize(text: str, prompt_wav: Path, emphasis: str = "none") -> tuple[list[float], int]:
     """Clone ``prompt_wav`` and speak ``text``. Returns float samples and the rate.
 
-    The model is loaded on the first call and kept for the process. CUDA is
-    used when ``torch.cuda.is_available()``; otherwise the same call runs on
-    CPU.
+    The model is loaded on the first call. CUDA is used when
+    ``torch.cuda.is_available()``; otherwise the same call runs on CPU.
+    Call :func:`release_model` after a render batch or a preview so a match
+    does not keep using the GPU.
     """
 
     cleaned = text.strip()

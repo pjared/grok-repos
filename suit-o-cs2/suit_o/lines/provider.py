@@ -127,21 +127,21 @@ class YamlLineProvider(LineProvider):
 
 
 def stock_line_texts(path: Path) -> list[str]:
-    """Every stock line, plus the same line with default HUD words filled in.
+    """Every stock line as it is spoken with the default HUD words.
 
-    The cloned-voice cache warms these so a match is not the first time the
-    model sees them. A line that mentions a real map name is still rendered
-    on demand and then cached.
+    These are the lines a cloned voice must pre-render. A match plays that
+    audio and does not synthesize. A line filled with a real map name, dollar
+    amount, or health value is not in this list, so it uses the Windows voice.
     """
 
     texts: list[str] = []
     seen: set[str] = set()
     for pool in load_lines(path).values():
         for line in pool:
-            for item in (line, _render(line, {})):
-                if item not in seen:
-                    seen.add(item)
-                    texts.append(item)
+            item = _render(line, {})
+            if item not in seen:
+                seen.add(item)
+                texts.append(item)
     return texts
 
 

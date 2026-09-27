@@ -267,11 +267,17 @@ class TrainingPanel:
         except SessionError as exc:
             messagebox.showerror("Suit-O", str(exc))
             return
+        self.runtime = runtime_status()
+        extra = ""
+        if not self.runtime.installed:
+            extra = " " + self.runtime.summary
         self.status.configure(
             text=(
                 f"Saved {profile.name} ({profile.duration_seconds:.0f}s). "
-                "It is now in the Voice tab as "
-                f"{profile.label}."
+                f"It is in the Voice tab as {profile.label}. "
+                "Every stock line is rendered to audio for this voice. "
+                "Matches play those files only. Preview is the only live synthesis."
+                + extra
             )
         )
         self._on_profile_built(profile.name)

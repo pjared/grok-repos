@@ -1,9 +1,9 @@
-"""Cloned-voice backend. Chatterbox is loaded only when a line is synthesized.
+"""Cloned-voice backend. Matches play pre-rendered WAV files only.
 
-Stock lines are cached as WAV files under the profile's ``cache/`` folder so
-a match can play them without waiting on the model again. Synthesis runs on
-the speech thread, never on the GUI thread. A background warm-up can fill
-the cache ahead of time and gets out of the way when a live line arrives.
+Stock lines are written under the profile's ``cache/`` folder when the voice
+is built, when those lines change, and when this voice's tuning changes.
+``speak`` never calls the model. A missing file is spoken with the Windows
+SAPI voice instead. Live synthesis is reserved for preview.
 """
 
 from __future__ import annotations
@@ -36,16 +36,26 @@ class CloneSpeechBackend(SpeechBackend):
         *,
         synthesizer: Synthesizer | None = None,
         player: Player | None = None,
+        fallback: SpeechBackend | None = None,
     ) -> None:
         self._settings = settings
         self._synthesizer = synthesizer or _default_synthesize
         self._player = player or _default_player
+        self._fallback = fallback
         self._cancel = threading.Event()
         self._urgent = threading.Event()
         self._lock = threading.Lock()
         self._closed = False
+        self._live = False
         self._warmer: threading.Thread | None = None
+        self._writing: set[Path] = set()
         self.synthesized: list[str] = []
+        self.fallback_spoken: list[str] = []
+
+    def allow_live_synthesis(self) -> None:
+        """Let this instance synthesize. Used only for Voice-tab preview."""
+
+        self._live = True
 
     def speak(self, text: str, tuning: VoiceTuning | None = None) -> bool:
         self._urgent.set()
@@ -54,37 +64,56 @@ class CloneSpeechBackend(SpeechBackend):
             previous = self._snapshot()
             self.apply_tuning(tuning)
         try:
-            return self._speak_current(text)
+            if self._live:
+                return self._speak_preview(text)
+            return self._speak_cached(text)
         finally:
             self._urgent.clear()
             if previous is not None:
                 self.apply_tuning(previous)
 
-    def warm_stock_lines(self, lines: list[str], *, wait: bool = False) -> None:
-        """Fill the cache off to the side. Live speech sets ``_urgent`` and cuts in."""
+    def prerender(self, lines: list[str], *, wait: bool = False) -> None:
+        """Write a WAV for every stock line. Skips files that already match.
 
-        pending = [line.strip() for line in lines if line and line.strip()]
+        Runs off the speech thread. Pauses while a match line is playing and
+        drops the model so that playback does not keep the GPU. Calling this
+        again after a tuning or script change fills whatever is missing.
+        """
+
+        pending = []
+        seen: set[str] = set()
+        for line in lines:
+            cleaned = line.strip()
+            if cleaned and cleaned not in seen:
+                seen.add(cleaned)
+                pending.append(cleaned)
 
         def run() -> None:
             for line in pending:
                 if self._closed:
-                    return
+                    break
                 while self._urgent.is_set() and not self._closed:
+                    _release_model()
                     time.sleep(0.05)
                 if self._closed:
-                    return
+                    break
                 try:
-                    with self._lock:
-                        if self._closed or self._urgent.is_set():
-                            continue
-                        self._cached_samples(line, self._snapshot())
+                    self._write_cache(line, self._snapshot())
                 except Exception:
-                    logger.exception("Could not cache a stock line")
+                    logger.exception("Could not pre-render a stock line")
+            _release_model()
 
         self._warmer = threading.Thread(target=run, name="suit-o-voice-cache", daemon=True)
         self._warmer.start()
         if wait:
             self._warmer.join()
+
+    def wait_prerender(self, timeout: float) -> bool:
+        warmer = self._warmer
+        if warmer is None:
+            return True
+        warmer.join(timeout)
+        return not warmer.is_alive()
 
     def apply_tuning(self, tuning: object) -> None:
         applied = normalize_tuning(tuning)  # type: ignore[arg-type]
@@ -110,6 +139,12 @@ class CloneSpeechBackend(SpeechBackend):
     def stop(self) -> None:
         self._cancel.set()
         self._urgent.set()
+        fallback = self._fallback
+        if fallback is not None:
+            try:
+                fallback.stop()
+            except Exception:
+                logger.debug("SAPI fallback stop failed", exc_info=True)
 
     def close(self) -> None:
         self._closed = True
@@ -117,8 +152,15 @@ class CloneSpeechBackend(SpeechBackend):
         warmer = self._warmer
         if warmer is not None and warmer is not threading.current_thread():
             warmer.join(timeout=1)
+        fallback = self._fallback
+        if fallback is not None:
+            try:
+                fallback.close()
+            except Exception:
+                logger.debug("SAPI fallback close failed", exc_info=True)
+        _release_model()
 
-    def _speak_current(self, text: str) -> bool:
+    def _speak_cached(self, text: str) -> bool:
         cleaned = text.strip()
         if not cleaned:
             self._cancel.clear()
@@ -126,13 +168,103 @@ class CloneSpeechBackend(SpeechBackend):
         if self._cancel.is_set():
             self._cancel.clear()
             return False
-        if is_disallowed_output_device(self._settings.output_device):
-            raise RuntimeError(
-                f"Refusing playback device {self._settings.output_device!r}. "
-                "It looks like a microphone or a virtual cable into voice chat."
+        self._refuse_output_device()
+        try:
+            path = self._cache_path(cleaned, self._snapshot())
+        except RuntimeError:
+            path = None
+        if path is not None and path.is_file():
+            samples, rate = read_wav(path)
+            return self._play(samples, rate)
+        logger.info("No pre-rendered clone for %r; using the Windows voice", cleaned)
+        return self._speak_fallback(cleaned)
+
+    def _speak_preview(self, text: str) -> bool:
+        cleaned = text.strip()
+        if not cleaned:
+            self._cancel.clear()
+            return True
+        if self._cancel.is_set():
+            self._cancel.clear()
+            return False
+        self._refuse_output_device()
+        tuning = self._snapshot()
+        path = self._cache_path(cleaned, tuning)
+        try:
+            if path.is_file():
+                samples, rate = read_wav(path)
+            else:
+                samples, rate = self._synthesize(cleaned, tuning)
+            return self._play(samples, rate)
+        finally:
+            _release_model()
+
+    def _speak_fallback(self, text: str) -> bool:
+        self.fallback_spoken.append(text)
+        fallback = self._fallback_backend()
+        tuning = self._snapshot()
+        sapi = VoiceTuning(
+            voice="",
+            rate=tuning.rate,
+            volume=tuning.volume,
+            pitch=tuning.pitch,
+            pause_ms=tuning.pause_ms,
+            emphasis=tuning.emphasis,
+        )
+        try:
+            fallback.set_output_device(self._settings.output_device)
+        except Exception:
+            logger.debug("Could not aim the Windows voice at the output device", exc_info=True)
+        try:
+            return bool(fallback.speak(text, tuning=sapi))
+        except TypeError:
+            return bool(fallback.speak(text))
+
+    def _fallback_backend(self) -> SpeechBackend:
+        if self._fallback is not None:
+            return self._fallback
+        from suit_o.speech.pyttsx3_backend import Pyttsx3Backend
+
+        tuning = self._snapshot()
+        self._fallback = Pyttsx3Backend(
+            SpeechConfig(
+                backend="pyttsx3",
+                voice="",
+                rate=tuning.rate,
+                volume=tuning.volume,
+                output_device=self._settings.output_device,
+                pitch=tuning.pitch,
+                pause_ms=tuning.pause_ms,
+                emphasis=tuning.emphasis,
             )
+        )
+        return self._fallback
+
+    def _write_cache(self, text: str, tuning: VoiceTuning) -> None:
+        path = self._cache_path(text, tuning)
         with self._lock:
-            samples, rate = self._cached_samples(cleaned, self._snapshot())
+            if path.is_file() or path in self._writing:
+                return
+            self._writing.add(path)
+        try:
+            samples, rate = self._synthesize(text, tuning)
+            shaped = shape_waveform(samples, rate, tuning)
+            with self._lock:
+                if not self._closed and not path.is_file():
+                    write_wav(path, shaped, rate)
+        finally:
+            with self._lock:
+                self._writing.discard(path)
+
+    def _synthesize(self, text: str, tuning: VoiceTuning) -> tuple[list[float], int]:
+        profile = self._profile()
+        samples, rate = self._synthesizer(text, profile.prompt_wav, tuning.emphasis)
+        self.synthesized.append(text)
+        if self._live:
+            return shape_waveform(samples, rate, tuning), rate
+        return samples, rate
+
+    def _play(self, samples: list[float], rate: int) -> bool:
         if self._cancel.is_set():
             self._cancel.clear()
             return False
@@ -147,16 +279,18 @@ class CloneSpeechBackend(SpeechBackend):
         self._cancel.clear()
         return bool(finished) and not cancelled
 
-    def _cached_samples(self, text: str, tuning: VoiceTuning) -> tuple[list[float], int]:
+    def _cache_path(self, text: str, tuning: VoiceTuning) -> Path:
         profile = self._profile()
-        path = profile.directory / "cache" / f"{cache_key(text, tuning)}.wav"
-        if path.is_file():
-            return read_wav(path)
-        samples, rate = self._synthesizer(text, profile.prompt_wav, tuning.emphasis)
-        self.synthesized.append(text)
-        shaped = shape_waveform(samples, rate, tuning)
-        write_wav(path, shaped, rate)
-        return shaped, rate
+        folder = profile.directory / "cache"
+        folder.mkdir(parents=True, exist_ok=True)
+        return folder / f"{cache_key(text, tuning)}.wav"
+
+    def _refuse_output_device(self) -> None:
+        if is_disallowed_output_device(self._settings.output_device):
+            raise RuntimeError(
+                f"Refusing playback device {self._settings.output_device!r}. "
+                "It looks like a microphone or a virtual cable into voice chat."
+            )
 
     def _profile(self):
         root = Path(self._settings.voices_dir) if self._settings.voices_dir else PROJECT_ROOT / "voices"
@@ -210,3 +344,11 @@ def _default_player(
     from suit_o.voice.capture import play_samples
 
     return play_samples(samples, sample_rate, output_device, volume=volume, cancel=cancel)
+
+
+def _release_model() -> None:
+    try:
+        from suit_o.voice.engine import release_model
+    except ImportError:
+        return
+    release_model()

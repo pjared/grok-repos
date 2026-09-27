@@ -86,17 +86,19 @@ Optional voice settings in `config.yaml`. These six are not tied to SAPI, so a f
 - `speech.pause_ms`: milliseconds of silence before a line, `0` to `1000` (default `0`). Spoken with SAPI `<silence msec="..."/>` when it is not zero.
 - `speech.emphasis`: `none`, `mild`, or `strong` (default `none`). Mild and strong use SAPI `<emph>`. Strong also raises pitch by 3 for that line only, still inside `-10` to `10`.
 
-`speech.backend` may be `pyttsx3`, `clone`, or `stub`. `remote` is still refused at startup. Rate, volume, pause, pitch, and emphasis are the same fields for every backend. Chatterbox has no pitch or words-per-minute control, so the clone backend applies pitch and rate to the waveform after synthesis and maps emphasis onto Chatterbox's exaggeration control. Volume is applied when the WAV is played, on the output device from the Listener tab.
+`speech.backend` may be `pyttsx3`, `clone`, or `stub`. `remote` is still refused at startup. Rate, volume, pause, pitch, and emphasis are the same fields for every backend. Chatterbox has no pitch or words-per-minute control, so pre-rendering applies pitch and rate to the waveform and maps emphasis onto Chatterbox's exaggeration control. Volume is applied when the WAV is played, on the output device from the Listener tab.
 
 ## Voice cloning
 
 Stock Windows voices still sound like a default SAPI voice. Voice Training is a recorder plus a zero-shot clone, not a long training run.
 
-The model is [Chatterbox](https://github.com/resemble-ai/chatterbox) by Resemble AI (`pip` package `chatterbox-tts`). It is published under the **MIT license**, so personal local use is allowed. You still have to record **your own voice, or someone who agreed to it**. Do not feed it ripped game audio or an actor's performance.
+The model is [Chatterbox](https://github.com/resemble-ai/chatterbox) by Resemble AI (`pip` package `chatterbox-tts`). It is published under the **MIT license**. That is not a non-commercial license: commercial use is allowed, and so is personal local use. You still have to record **your own voice, or someone who agreed to it**. Do not feed it ripped game audio or an actor's performance.
 
 Chatterbox clones from a reference clip. The script in `voice_script.txt` is about one to three minutes of original Suit-O lines (vowels, consonants, numbers, questions) so the recording covers a wide set of sounds. The profile keeps the full recording. The model itself is prompted with a clean excerpt of up to 30 seconds, which is the length this model is built for. Edit `voice_script.txt` in any text editor and press **Reload script** before you record.
 
 On the Voice Training tab: pick the **microphone** (input devices are allowed here), read the line, then **Record / Stop / Play back / Re-record**. The level meter moves while you record. Playback goes to the output device chosen on the Listener tab. That output still cannot be a microphone or a virtual cable. **Build voice** writes `voices/<name>/` with `profile.yaml`, `reference.wav`, and `prompt.wav`. You need about a minute of audio and a take for every script line.
+
+**Build voice** also pre-renders every stock line in `lines/lines.yaml` to WAV files under `voices/<name>/cache/`. That render is required. It runs again when you edit those stock lines, and again when you save a new rate, pitch, pause, or emphasis for that voice. Volume does not rebuild the files. During a match Suit-O plays only those files: no live synthesis and no GPU use. If a file is missing (a line that filled in a real map name, health, or dollar amount, or a render that has not finished), that one line uses the Windows SAPI voice instead of generating audio mid-match. **Preview** on the Voice tab is the only live synthesis. After a render or a preview, the model is unloaded so the GPU is free for the match.
 
 Install the optional stack only if you want this. The base app stays on PyYAML and pyttsx3.
 
@@ -116,9 +118,9 @@ If there is no NVIDIA GPU, the same requirements file runs on CPU. The tab says 
 Rough size, so you can plan disk space before installing:
 
 - Disk: about 8 GB free. The Python packages are several GB, and the first synthesis downloads about 2 GB of Chatterbox weights into the Hugging Face cache.
-- VRAM: about 4–6 GB for the English Chatterbox model when CUDA is available. CPU mode does not need VRAM; it uses system RAM and is slower, which is fine because stock lines are cached.
+- VRAM: about 4–6 GB for the English Chatterbox model while it is pre-rendering or previewing, when CUDA is available. Matches do not use the GPU. CPU mode does not need VRAM; it uses system RAM and is slower, which only matters while the stock lines are being rendered.
 
-After you save the cloned voice, Suit-O speaks it through the `clone` backend on the same speech thread as everything else (not the GUI thread). The first time a line is spoken it is synthesized and stored under `voices/<name>/cache/`. Saving the voice also starts caching the stock lines from `lines/lines.yaml` in the background, and a live line cuts ahead of that cache. Later lines with the same text, rate, pitch, pause, and emphasis play the WAV. Preview on the Voice tab uses the clone for that one line even before you save it, without switching in-game lines until **Save**.
+After you build or save the cloned voice, Suit-O speaks it through the `clone` backend on the same speech thread as everything else (not the GUI thread). That thread only reads the pre-rendered WAV. Preview uses the clone for one line even before you save it, without switching in-game lines until **Save**.
 
 `voices/` is gitignored. Nothing you record is committed.
 
@@ -173,7 +175,7 @@ A broke freeze (under rifle-plus-helmet money: 4100 on CT, 3700 on T) uses the l
 
 **You hear nothing, but the log shows lines.** Check mute, the volume slider, and the output device. Press **Test voice** after choosing a playback device. On the Voice tab, **Preview** speaks the text box on that same device. A wireless headset can expose two outputs (game and chat) plus a microphone; pick a playback name, not the microphone. The Windows default is sometimes a different endpoint than the one you are wearing.
 
-**It does not sound like Suit-O yet.** Open Voice Training, record the script in your own voice, and press **Build voice**. Then on the Voice tab pick `Clone: Suit-O` and press **Preview**. Rate, pitch, pause, and emphasis still apply. If the Voice Training tab says the optional packages are missing, install them with `python -m pip install -r requirements-voice.txt` and start the window again.
+**It does not sound like Suit-O yet.** Open Voice Training, record the script in your own voice, and press **Build voice**. Suit-O then renders every stock line for that voice. On the Voice tab, pick `Clone: Suit-O` and press **Preview** to hear a live line. In a match you hear the rendered files. A line with no file yet uses the Windows voice. If the Voice Training tab says the optional packages are missing, install them with `python -m pip install -r requirements-voice.txt` and start the window again so the render can run.
 
 **The desktop window opens and closes immediately.** Read `suit-o.log` in this folder. `pythonw` has no console, so startup errors are written there. A missing virtual environment is reported by the launcher itself.
 

@@ -95,6 +95,7 @@ class SuitOWindow:
     def _on_profile_built(self, name: str) -> None:
         self.voice_panel.reload_voices()
         self._record_profile(name)
+        self.app.prerender_profile(name)
 
     def _record_profile(self, name: str) -> None:
         self.app.note(f"Cloned voice saved: {name}")
@@ -275,6 +276,7 @@ class SuitOWindow:
         if self._closed:
             return
         try:
+            self.app.poll_stock_lines()
             self._paint(self.app.snapshot())
         except Exception:
             logger.exception("Could not refresh the Suit-O window")
