@@ -12,7 +12,7 @@ New notes go under `## [Unreleased]`. Every push to `main` updates this file in 
 
 ### Changed
 
-- The README and tests no longer name a personal headset or a home machine. Personal settings stay in gitignored `config.local.yaml`.
+- The README and tests no longer name a personal headset or a home machine. Personal settings stay in gitignored `config.local.yaml`. (`3715752`)
 
 ## [0.18.0] - 2026-09-27
 
