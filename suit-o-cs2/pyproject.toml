@@ -1,6 +1,6 @@
 [project]
 name = "suit-o"
-version = "0.19.6"
+version = "0.19.7"
 description = "Local Counter-Strike 2 companion that speaks in-character lines from Game State Integration."
 requires-python = ">=3.11"
 dependencies = [
