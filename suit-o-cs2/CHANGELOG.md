@@ -10,6 +10,10 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+### Fixed
+
+- Git ignores `config.local.yaml.*.bak`, so a backup of an unreadable local config is not committed.
+
 ## [0.19.15] - 2026-09-27
 
 ### Fixed

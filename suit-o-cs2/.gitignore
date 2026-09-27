@@ -12,6 +12,7 @@ lineups/**/*.webp
 lineups/**/*.txt
 lineups/**/order.txt
 config.local.yaml
+config.local.yaml.*.bak
 .suit-o-restart.json
 lineup-data/**
 !lineup-data/.gitkeep

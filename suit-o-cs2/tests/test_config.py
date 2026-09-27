@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import yaml
@@ -194,6 +195,27 @@ def test_tuning_defaults_when_keys_are_missing_and_bad_values_are_refused():
             raised = True
             assert snippet in str(exc)
         assert raised
+
+
+def test_local_config_backups_are_gitignored():
+    repo = PROJECT_ROOT.parent
+    ignored = (
+        "suit-o-cs2/config.local.yaml.20260927-191500.bak",
+        "suit-o-cs2/config.local.yaml.20260927-191500-2.bak",
+    )
+    for relative in ignored:
+        result = subprocess.run(
+            ["git", "check-ignore", "-q", "--", relative],
+            cwd=repo,
+            check=False,
+        )
+        assert result.returncode == 0, relative
+    tracked = subprocess.run(
+        ["git", "check-ignore", "-q", "--", "suit-o-cs2/config.yaml"],
+        cwd=repo,
+        check=False,
+    )
+    assert tracked.returncode == 1
 
 
 def test_remote_url_is_ignored(tmp_path: Path):
