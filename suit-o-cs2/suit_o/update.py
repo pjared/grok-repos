@@ -20,7 +20,7 @@ REQUIREMENT_NAMES = (
 
 GITHUB_OWNER = "pjared"
 GITHUB_REPO = "grok-repos"
-SUIT_O_CHECK_MARKERS = ("pytest", "suit-o")
+SUIT_O_WORKFLOW = "suit-o-tests.yml"
 
 
 @dataclass(frozen=True)
@@ -54,15 +54,14 @@ def run_git_update(
     runner: Runner | None = None,
     check=None,
 ) -> UpdateOutcome:
-    """Fast-forward only onto a commit whose Suit-O tests passed.
+    """Fast-forward only to the commit whose Suit-O workflow run passed.
 
-    A stub ``runner`` without ``check`` keeps the older pull-only path so
-    existing tests can exercise git errors without calling GitHub. The
-    desktop window passes neither and always checks the public API first.
+    Fetch once, remember that ``origin/main`` SHA, and judge that SHA by the
+    ``suit-o-tests.yml`` workflow run. Then ``git merge --ff-only`` that SHA.
+    A later commit on ``origin/main`` is not included, and this never runs
+    ``git pull``.
     """
 
-    if check is None and runner is not None:
-        return _pull_ff_only(project, runner)
     run = runner or subprocess_runner
     status_of = check or github_check_state
     repo = find_git_root(project)
@@ -77,41 +76,38 @@ def run_git_update(
     remote = run(["git", "rev-parse", "origin/main"], repo)
     if remote.code != 0:
         return UpdateOutcome(False, False, explain_git_failure(remote.stdout + "\n" + remote.stderr))
-    if remote.stdout.strip() == head.stdout.strip():
-        return UpdateOutcome(True, False, "Already up to date.")
+    before = head.stdout.strip()
     sha = remote.stdout.strip()
+    if sha == before:
+        return UpdateOutcome(True, False, "Already up to date.")
     try:
         state = status_of(sha)
     except OSError as exc:
         return UpdateOutcome(False, False, f"Update stopped. Suit-O could not read the test result. {exc}")
     if state != "success":
         return UpdateOutcome(False, False, explain_check_state(str(state), sha))
-    return _pull_ff_only(project, run)
+    return _merge_ff_only(project, run, sha, before)
 
 
-def _pull_ff_only(project: Path, runner: Runner | None = None) -> UpdateOutcome:
-    """Run ``git pull --ff-only``. Already up to date does not ask for a restart."""
+def _merge_ff_only(project: Path, runner: Runner, sha: str, before: str) -> UpdateOutcome:
+    """Fast-forward to ``sha`` only. Does not fetch again and does not pull."""
 
     repo = find_git_root(project)
     if repo is None:
         return UpdateOutcome(False, False, "Suit-O could not find a git checkout to update.")
-    run = runner or subprocess_runner
-    before = run(["git", "rev-parse", "HEAD"], repo)
-    if before.code != 0:
-        return UpdateOutcome(False, False, explain_git_failure(before.stdout + "\n" + before.stderr))
-    pull = run(["git", "pull", "--ff-only"], repo)
-    combined = f"{pull.stdout}\n{pull.stderr}"
-    if pull.code != 0:
+    merged = runner(["git", "merge", "--ff-only", sha], repo)
+    combined = f"{merged.stdout}\n{merged.stderr}"
+    if merged.code != 0:
         return UpdateOutcome(False, False, explain_git_failure(combined))
     if _already_current(combined):
         return UpdateOutcome(True, False, "Already up to date.")
-    after = run(["git", "rev-parse", "HEAD"], repo)
+    after = runner(["git", "rev-parse", "HEAD"], repo)
     if after.code != 0:
         return UpdateOutcome(False, False, explain_git_failure(after.stdout + "\n" + after.stderr))
-    if after.stdout.strip() == before.stdout.strip():
+    if after.stdout.strip() == before:
         return UpdateOutcome(True, False, "Already up to date.")
-    diff = run(
-        ["git", "diff", "--name-only", before.stdout.strip(), after.stdout.strip()],
+    diff = runner(
+        ["git", "diff", "--name-only", before, after.stdout.strip()],
         repo,
     )
     files = [line.strip() for line in diff.stdout.splitlines() if line.strip()]
@@ -156,46 +152,54 @@ def explain_check_state(state: str, sha: str) -> str:
     )
 
 
-def interpret_check_runs(body: object) -> str:
-    """Map GitHub check-run JSON to success, failure, or pending.
+def interpret_workflow_runs(body: object, sha: str) -> str:
+    """Map workflow-run JSON to success, failure, or pending.
 
-    Only Suit-O's pytest check counts. Other workflows in the monorepo do not.
+    Only the ``suit-o-tests.yml`` run for ``sha`` counts. A check named
+    pytest on some other workflow does not.
     """
 
     if not isinstance(body, dict):
         return "pending"
-    runs = body.get("check_runs")
+    runs = body.get("workflow_runs")
     if not isinstance(runs, list) or not runs:
         return "pending"
-    relevant = [run for run in runs if isinstance(run, dict) and _is_suit_o_check(run)]
-    if not relevant:
+    wanted = sha.strip()
+    matching = [
+        run
+        for run in runs
+        if isinstance(run, dict) and _is_suit_o_workflow(run, wanted)
+    ]
+    if not matching:
         return "pending"
-    saw_success = False
-    for run in relevant:
-        status = str(run.get("status") or "").lower()
-        conclusion = str(run.get("conclusion") or "").lower()
-        if status != "completed" or not conclusion:
-            return "pending"
-        if conclusion in {"failure", "cancelled", "timed_out", "action_required", "stale"}:
-            return "failure"
-        if conclusion == "success":
-            saw_success = True
-            continue
-        if conclusion in {"skipped", "neutral"}:
-            continue
+    newest = max(matching, key=_workflow_stamp)
+    status = str(newest.get("status") or "").lower()
+    conclusion = str(newest.get("conclusion") or "").lower()
+    if status != "completed" or not conclusion:
         return "pending"
-    return "success" if saw_success else "pending"
+    if conclusion == "success":
+        return "success"
+    if conclusion in {
+        "failure",
+        "cancelled",
+        "timed_out",
+        "action_required",
+        "stale",
+        "startup_failure",
+    }:
+        return "failure"
+    return "pending"
 
 
 def github_check_state(sha: str) -> str:
-    """Read the public check-runs API. No token; the repository is public."""
+    """Read the public workflow-run API for this SHA. No token."""
 
     import json
     import urllib.request
 
     url = (
         f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}"
-        f"/commits/{sha}/check-runs"
+        f"/actions/workflows/{SUIT_O_WORKFLOW}/runs?head_sha={sha}"
     )
     request = urllib.request.Request(
         url,
@@ -206,12 +210,19 @@ def github_check_state(sha: str) -> str:
     )
     with urllib.request.urlopen(request, timeout=20) as response:
         body = json.loads(response.read().decode("utf-8"))
-    return interpret_check_runs(body)
+    return interpret_workflow_runs(body, sha)
 
 
-def _is_suit_o_check(run: dict) -> bool:
-    name = str(run.get("name") or "").lower()
-    return any(marker in name for marker in SUIT_O_CHECK_MARKERS)
+def _is_suit_o_workflow(run: dict, sha: str) -> bool:
+    path = str(run.get("path") or "").replace("\\", "/")
+    if not path.endswith(SUIT_O_WORKFLOW):
+        return False
+    head = str(run.get("head_sha") or "").strip()
+    return head == sha
+
+
+def _workflow_stamp(run: dict) -> str:
+    return str(run.get("updated_at") or run.get("created_at") or run.get("run_number") or "")
 
 
 def explain_git_failure(text: str) -> str:
@@ -235,7 +246,7 @@ def explain_git_failure(text: str) -> str:
             "Update stopped because this copy has commits that are not on the remote. "
             "Suit-O will not merge or rebase. Update this copy by hand."
         )
-    first = next((line.strip() for line in text.splitlines() if line.strip()), "git pull failed")
+    first = next((line.strip() for line in text.splitlines() if line.strip()), "git merge failed")
     return f"Update failed. {first}"
 
 

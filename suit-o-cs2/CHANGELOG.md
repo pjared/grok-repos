@@ -10,6 +10,10 @@ New notes go under `## [Unreleased]`. Every push to `main` updates this file in 
 
 ## [Unreleased]
 
+### Fixed
+
+- Update fast-forwards to the exact commit whose `suit-o-tests.yml` run passed. A newer commit that landed after that check is not installed.
+
 ### Changed
 
 - The README and tests no longer name a personal headset or a home machine. Personal settings stay in gitignored `config.local.yaml`. (`3715752`)

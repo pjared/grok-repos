@@ -25,7 +25,7 @@ from suit_o.update import (
     CommandResult,
     explain_git_failure,
     install_requirements,
-    interpret_check_runs,
+    interpret_workflow_runs,
     requirement_paths,
     run_git_update,
 )
@@ -204,43 +204,56 @@ def test_update_reports_local_changes_fast_forward_and_requirements(tmp_path: Pa
     (project / "requirements.txt").write_text("pyyaml\n", encoding="utf-8")
     (project / "requirements-voice.txt").write_text("torch\n", encoding="utf-8")
 
-    def blocked(_args, _cwd):
-        return CommandResult(
-            1,
-            "",
-            "error: Your local changes to the following files would be overwritten by merge:\n"
-            "\tconfig.yaml\n"
-            "Please commit your changes or stash them before you merge.\n"
-            "Aborting\n",
-        )
+    def blocked(args, _cwd):
+        if args == ["git", "rev-parse", "HEAD"]:
+            return CommandResult(0, "aaa\n", "")
+        if args == ["git", "fetch", "origin"]:
+            return CommandResult(0, "", "")
+        if args == ["git", "rev-parse", "origin/main"]:
+            return CommandResult(0, "bbb\n", "")
+        if args == ["git", "merge", "--ff-only", "bbb"]:
+            return CommandResult(
+                1,
+                "",
+                "error: Your local changes to the following files would be overwritten by merge:\n"
+                "\tconfig.yaml\n"
+                "Please commit your changes or stash them before you merge.\n"
+                "Aborting\n",
+            )
+        return CommandResult(1, "", f"unexpected {args}")
 
-    def blocked_pull(args, cwd):
-        if args[:2] == ["git", "rev-parse"]:
-            return CommandResult(0, "abc\n", "")
-        return blocked(args, cwd)
-
-    refused = run_git_update(project, blocked_pull)
+    refused = run_git_update(project, blocked, check=lambda _sha: "success")
     assert refused.ok is False
     assert refused.changed is False
     assert "config.yaml" in refused.message
     assert "config.local.yaml" in refused.message
     assert "git pull" not in refused.message
 
-    diverged = run_git_update(
-        project,
-        lambda args, _cwd: CommandResult(0, "abc\n", "")
-        if args[:2] == ["git", "rev-parse"]
-        else CommandResult(1, "", "fatal: Not possible to fast-forward, aborting.\n"),
-    )
+    def diverged_runner(args, _cwd):
+        if args == ["git", "rev-parse", "HEAD"]:
+            return CommandResult(0, "aaa\n", "")
+        if args == ["git", "fetch", "origin"]:
+            return CommandResult(0, "", "")
+        if args == ["git", "rev-parse", "origin/main"]:
+            return CommandResult(0, "bbb\n", "")
+        if args[:3] == ["git", "merge", "--ff-only"]:
+            return CommandResult(1, "", "fatal: Not possible to fast-forward, aborting.\n")
+        return CommandResult(1, "", f"unexpected {args}")
+
+    diverged = run_git_update(project, diverged_runner, check=lambda _sha: "success")
     assert "fast-forward" not in diverged.message
     assert "will not merge" in diverged.message
 
     def current(args, _cwd):
-        if args[:2] == ["git", "rev-parse"]:
+        if args == ["git", "rev-parse", "HEAD"]:
             return CommandResult(0, "abc\n", "")
-        return CommandResult(0, "Already up to date.\n", "")
+        if args == ["git", "fetch", "origin"]:
+            return CommandResult(0, "", "")
+        if args == ["git", "rev-parse", "origin/main"]:
+            return CommandResult(0, "abc\n", "")
+        return CommandResult(1, "", f"unexpected {args}")
 
-    same = run_git_update(project, current)
+    same = run_git_update(project, current, check=lambda _sha: "success")
     assert same.ok is True
     assert same.changed is False
     assert same.message == "Already up to date."
@@ -248,17 +261,23 @@ def test_update_reports_local_changes_fast_forward_and_requirements(tmp_path: Pa
     heads = iter(["aaa\n", "bbb\n"])
 
     def pulled(args, _cwd):
-        if args[:2] == ["git", "rev-parse"]:
+        if args == ["git", "rev-parse", "HEAD"]:
             return CommandResult(0, next(heads), "")
+        if args == ["git", "fetch", "origin"]:
+            return CommandResult(0, "", "")
+        if args == ["git", "rev-parse", "origin/main"]:
+            return CommandResult(0, "bbb\n", "")
+        if args == ["git", "merge", "--ff-only", "bbb"]:
+            return CommandResult(0, "Updating aaa..bbb\n", "")
         if args[:2] == ["git", "diff"]:
             return CommandResult(
                 0,
                 "suit-o-cs2/requirements.txt\nsuit-o-cs2/suit_o/app.py\n",
                 "",
             )
-        return CommandResult(0, "Updating aaa..bbb\n", "")
+        return CommandResult(1, "", f"unexpected {args}")
 
-    updated = run_git_update(project, pulled)
+    updated = run_git_update(project, pulled, check=lambda _sha: "success")
     assert updated.ok is True
     assert updated.changed is True
     assert updated.requirements == (str((project / "requirements.txt").resolve()),)
@@ -278,25 +297,47 @@ def test_update_reports_local_changes_fast_forward_and_requirements(tmp_path: Pa
     ) == []
 
 
-def test_check_runs_ignore_other_workflows_and_wait_for_pytest():
-    assert interpret_check_runs({}) == "pending"
-    assert interpret_check_runs({"check_runs": []}) == "pending"
-    assert interpret_check_runs("nope") == "pending"
-    other = {"name": "lint", "status": "completed", "conclusion": "failure"}
-    assert interpret_check_runs({"check_runs": [other]}) == "pending"
-    pending = {"name": "pytest", "status": "in_progress", "conclusion": None}
-    assert interpret_check_runs({"check_runs": [pending]}) == "pending"
-    failed = {"name": "pytest", "status": "completed", "conclusion": "failure"}
-    assert interpret_check_runs({"check_runs": [failed, other]}) == "failure"
-    cancelled = {"name": "Suit-O tests / pytest", "status": "completed", "conclusion": "cancelled"}
-    assert interpret_check_runs({"check_runs": [cancelled]}) == "failure"
-    skipped = {"name": "pytest", "status": "completed", "conclusion": "skipped"}
-    passed = {"name": "suit-o", "status": "completed", "conclusion": "success"}
-    assert interpret_check_runs({"check_runs": [skipped, passed]}) == "success"
-    assert interpret_check_runs({"check_runs": [passed]}) == "success"
+def _workflow(sha: str, *, status: str, conclusion: str | None, updated_at: str = "2026-09-27T00:00:00Z"):
+    return {
+        "name": "Suit-O tests",
+        "path": ".github/workflows/suit-o-tests.yml",
+        "head_sha": sha,
+        "status": status,
+        "conclusion": conclusion,
+        "updated_at": updated_at,
+    }
 
 
-def _remote_runner(heads: list[str], pulls: list[list[str]]):
+def test_workflow_runs_ignore_a_check_named_pytest():
+    sha = "bbb"
+    assert interpret_workflow_runs({}, sha) == "pending"
+    assert interpret_workflow_runs({"workflow_runs": []}, sha) == "pending"
+    assert interpret_workflow_runs("nope", sha) == "pending"
+    named_pytest = {
+        "name": "pytest",
+        "path": ".github/workflows/other.yml",
+        "head_sha": sha,
+        "status": "completed",
+        "conclusion": "success",
+    }
+    assert interpret_workflow_runs({"check_runs": [named_pytest]}, sha) == "pending"
+    assert interpret_workflow_runs({"workflow_runs": [named_pytest]}, sha) == "pending"
+    pending = _workflow(sha, status="in_progress", conclusion=None)
+    assert interpret_workflow_runs({"workflow_runs": [pending]}, sha) == "pending"
+    failed = _workflow(sha, status="completed", conclusion="failure")
+    assert interpret_workflow_runs({"workflow_runs": [failed]}, sha) == "failure"
+    cancelled = _workflow(sha, status="completed", conclusion="cancelled")
+    assert interpret_workflow_runs({"workflow_runs": [cancelled]}, sha) == "failure"
+    passed = _workflow(sha, status="completed", conclusion="success")
+    newer_failure = _workflow(
+        sha, status="completed", conclusion="failure", updated_at="2026-09-27T01:00:00Z"
+    )
+    assert interpret_workflow_runs({"workflow_runs": [passed, newer_failure]}, sha) == "failure"
+    assert interpret_workflow_runs({"workflow_runs": [passed]}, "ccc") == "pending"
+    assert interpret_workflow_runs({"workflow_runs": [passed]}, sha) == "success"
+
+
+def _remote_runner(heads: list[str], merges: list[list[str]]):
     sequence = iter(heads)
 
     def runner(args, _cwd):
@@ -306,9 +347,12 @@ def _remote_runner(heads: list[str], pulls: list[list[str]]):
             return CommandResult(0, "", "")
         if args == ["git", "rev-parse", "origin/main"]:
             return CommandResult(0, "bbb\n", "")
-        if args[:2] == ["git", "pull"]:
-            pulls.append(args)
+        if args[:3] == ["git", "merge", "--ff-only"]:
+            merges.append(args)
             return CommandResult(0, "Updating aaa..bbb\n", "")
+        if args[:2] == ["git", "pull"]:
+            merges.append(args)
+            return CommandResult(1, "", "plain pull is not used")
         if args[:2] == ["git", "diff"]:
             return CommandResult(0, "", "")
         return CommandResult(1, "", f"unexpected {' '.join(args)}")
@@ -320,39 +364,77 @@ def test_update_refuses_a_commit_until_its_tests_pass(tmp_path: Path):
     project = tmp_path / "suit-o-cs2"
     project.mkdir()
     (tmp_path / ".git").mkdir()
-    pulls: list[list[str]] = []
+    merges: list[list[str]] = []
 
     pending = run_git_update(
         project,
-        _remote_runner(["aaa\n"], pulls),
+        _remote_runner(["aaa\n"], merges),
         check=lambda sha: "pending",
     )
     assert pending.ok is False
     assert pending.changed is False
     assert "bbb"[:7] in pending.message
     assert "still running" in pending.message
-    assert pulls == []
+    assert merges == []
 
     failed = run_git_update(
         project,
-        _remote_runner(["aaa\n"], pulls),
+        _remote_runner(["aaa\n"], merges),
         check=lambda sha: "failure",
     )
     assert failed.ok is False
     assert "Tests failed" in failed.message
     assert "bbb"[:7] in failed.message
-    assert pulls == []
+    assert merges == []
 
     seen: list[str] = []
     updated = run_git_update(
         project,
-        _remote_runner(["aaa\n", "aaa\n", "bbb\n"], pulls),
+        _remote_runner(["aaa\n", "bbb\n"], merges),
         check=lambda sha: seen.append(sha) or "success",
     )
     assert updated.ok is True
     assert updated.changed is True
-    assert pulls and pulls[-1][:2] == ["git", "pull"]
+    assert merges == [["git", "merge", "--ff-only", "bbb"]]
     assert seen == ["bbb"]
+
+
+def test_update_merges_the_checked_sha_when_a_newer_commit_lands(tmp_path: Path):
+    """A commit that appears after the check must not be installed."""
+
+    project = tmp_path / "suit-o-cs2"
+    project.mkdir()
+    (tmp_path / ".git").mkdir()
+    remotes = iter(["bbb\n", "ccc\n"])
+    merged: list[str] = []
+    checked: list[str] = []
+
+    def runner(args, _cwd):
+        if args == ["git", "rev-parse", "HEAD"]:
+            return CommandResult(0, "bbb\n" if merged else "aaa\n", "")
+        if args == ["git", "fetch", "origin"]:
+            return CommandResult(0, "", "")
+        if args == ["git", "rev-parse", "origin/main"]:
+            return CommandResult(0, next(remotes), "")
+        if args[:2] == ["git", "pull"]:
+            raise AssertionError("Update used git pull")
+        if args[:3] == ["git", "merge", "--ff-only"]:
+            merged.append(args[3])
+            return CommandResult(0, "Fast-forward\n", "")
+        if args[:2] == ["git", "diff"]:
+            return CommandResult(0, "", "")
+        return CommandResult(1, "", f"unexpected {args}")
+
+    def check(sha: str) -> str:
+        checked.append(sha)
+        return "success" if sha == "bbb" else "pending"
+
+    outcome = run_git_update(project, runner, check=check)
+    assert outcome.ok is True
+    assert outcome.changed is True
+    assert checked == ["bbb"]
+    assert merged == ["bbb"]
+    assert next(remotes) == "ccc\n"
 
 
 def test_restart_waits_for_the_menu_or_the_end_of_the_round(tmp_path: Path):
