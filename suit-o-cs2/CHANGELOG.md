@@ -6,9 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Dates are Pacific Time. Each entry lists the short commit hash.
 
-New notes go under `## [Unreleased]`. Do not add a heading for today's date. Under Unreleased, each category appears once, in the order Added, Changed, Removed, Fixed. Add a new bullet under that heading instead of starting another one. Every push to `main` updates this file in that same commit. After the Suit-O tests pass on `main`, a release step moves Unreleased into `## [x.y.z] - YYYY-MM-DD`, writes that version into `pyproject.toml`, and tags `suit-o-vX.Y.Z`. Dated version headings are created only by that release step. It skips the cut when Unreleased is empty. The Update button only fast-forwards to the commit whose `suit-o-tests.yml` run passed. It does not commit or tag.
+New notes go under `## [Unreleased]`. Do not add a heading for today's date. Under Unreleased, each category appears once, in the order Added, Changed, Removed, Fixed. Add a new bullet under that heading instead of starting another one. Every push to `main` updates this file in that same commit. After the Suit-O tests pass on `main`, a release step moves Unreleased into `## [x.y.z] - YYYY-MM-DD`, writes that version into `pyproject.toml`, and tags `suit-o-vX.Y.Z`. Dated version headings are created only by that release step. It skips the cut when Unreleased is empty. The Update button only fast-forwards to the newest commit on main whose `suit-o-tests.yml` run passed. It does not commit or tag.
 
 ## [Unreleased]
+
+### Fixed
+
+- Update follows the newest main commit whose Suit-O tests passed. A release cut has no run until the release job starts one, so Update no longer stops on that untested commit.
 
 ## [0.19.3] - 2026-09-27
 

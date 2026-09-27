@@ -3,6 +3,7 @@ name: Suit-O tests
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   pytest:
@@ -27,6 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,9 +37,22 @@ jobs:
         with:
           python-version: "3.12"
       - name: Cut the release
+        id: cut
         working-directory: suit-o-cs2
-        run: python -m suit_o.release --commit
+        run: |
+          python -m suit_o.release --commit | tee "$RUNNER_TEMP/cut.txt"
+          if grep -q '^Tagged ' "$RUNNER_TEMP/cut.txt"; then
+            echo "cut=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "cut=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Push the version and tag
+        if: steps.cut.outputs.cut == 'true'
         run: |
           git push origin HEAD:main
           git push origin --tags
+      - name: Test the release commit
+        if: steps.cut.outputs.cut == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run suit-o-tests.yml --ref main

@@ -63,12 +63,13 @@ def run_git_update(
     runner: Runner | None = None,
     check=None,
 ) -> UpdateOutcome:
-    """Fast-forward only to the commit whose Suit-O workflow run passed.
+    """Fast-forward to the newest commit on ``origin/main`` whose tests passed.
 
-    Fetch once, remember that ``origin/main`` SHA, and judge that SHA by the
-    ``suit-o-tests.yml`` workflow run. Then ``git merge --ff-only`` that SHA.
-    A later commit on ``origin/main`` is not included, and this never runs
-    ``git pull``.
+    Fetch once and remember that ``origin/main`` SHA. A release cut is pushed
+    by the test workflow and has no run of its own until a later dispatch, so
+    walk that SHA and its parents, newest first, and ``git merge --ff-only``
+    the first one whose ``suit-o-tests.yml`` run succeeded. This never runs
+    ``git pull`` and does not read ``origin/main`` again after the fetch.
     """
 
     run = runner or subprocess_runner
@@ -89,13 +90,38 @@ def run_git_update(
     sha = remote.stdout.strip()
     if sha == before:
         return UpdateOutcome(True, False, "Already up to date.")
-    try:
-        state = status_of(sha)
-    except OSError as exc:
-        return UpdateOutcome(False, False, f"Update stopped. Suit-O could not read the test result. {exc}")
-    if state != "success":
-        return UpdateOutcome(False, False, explain_check_state(str(state), sha))
-    return _merge_ff_only(project, run, sha, before)
+    chosen, refusal = _newest_tested_commit(run, status_of, repo, before, sha)
+    if chosen is None:
+        return UpdateOutcome(False, False, refusal)
+    return _merge_ff_only(project, run, chosen, before)
+
+
+def _newest_tested_commit(runner: Runner, status_of, repo: Path, before: str, sha: str) -> tuple[str | None, str]:
+    """Return the newest passing SHA among ``sha`` and the commits behind it.
+
+    ``sha`` is the ``origin/main`` value captured once. Parents come from
+    ``git rev-list`` and are not a second read of the remote tip.
+    """
+
+    commits = [sha, *_older_commits(runner, repo, before, sha)]
+    tip_state = "pending"
+    for index, commit in enumerate(commits):
+        try:
+            state = str(status_of(commit))
+        except OSError as exc:
+            return None, f"Update stopped. Suit-O could not read the test result. {exc}"
+        if index == 0:
+            tip_state = state
+        if state == "success":
+            return commit, ""
+    return None, explain_check_state(tip_state, sha)
+
+
+def _older_commits(runner: Runner, repo: Path, before: str, sha: str) -> list[str]:
+    listed = runner(["git", "rev-list", "--max-count", "20", f"{before}..{sha}"], repo)
+    if listed.code != 0:
+        return []
+    return [line.strip() for line in listed.stdout.splitlines() if line.strip() and line.strip() != sha]
 
 
 def _merge_ff_only(project: Path, runner: Runner, sha: str, before: str) -> UpdateOutcome:

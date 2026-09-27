@@ -435,6 +435,8 @@ def _remote_runner(heads: list[str], merges: list[list[str]]):
             return CommandResult(0, "", "")
         if args == ["git", "rev-parse", "origin/main"]:
             return CommandResult(0, "bbb\n", "")
+        if args[:2] == ["git", "rev-list"]:
+            return CommandResult(0, "", "")
         if args[:3] == ["git", "merge", "--ff-only"]:
             merges.append(args)
             return CommandResult(0, "Updating aaa..bbb\n", "")
@@ -523,6 +525,94 @@ def test_update_merges_the_checked_sha_when_a_newer_commit_lands(tmp_path: Path)
     assert checked == ["bbb"]
     assert merged == ["bbb"]
     assert next(remotes) == "ccc\n"
+
+
+def test_update_skips_an_untested_release_commit(tmp_path: Path):
+    """The release job's cut commit has no workflow run. Install the parent that passed."""
+
+    project = tmp_path / "suit-o-cs2"
+    project.mkdir()
+    (tmp_path / ".git").mkdir()
+    merges: list[str] = []
+    checked: list[str] = []
+
+    def runner(args, _cwd):
+        if args == ["git", "rev-parse", "HEAD"]:
+            return CommandResult(0, "bbb\n" if merges else "aaa\n", "")
+        if args == ["git", "fetch", "origin"]:
+            return CommandResult(0, "", "")
+        if args == ["git", "rev-parse", "origin/main"]:
+            return CommandResult(0, "ccc\n", "")
+        if args[:2] == ["git", "rev-list"]:
+            assert args[-1] == "aaa..ccc"
+            return CommandResult(0, "ccc\nbbb\n", "")
+        if args[:2] == ["git", "pull"]:
+            raise AssertionError("Update used git pull")
+        if args[:3] == ["git", "merge", "--ff-only"]:
+            merges.append(args[3])
+            return CommandResult(0, "Fast-forward\n", "")
+        if args[:2] == ["git", "diff"]:
+            return CommandResult(0, "", "")
+        return CommandResult(1, "", f"unexpected {args}")
+
+    def check(sha: str) -> str:
+        checked.append(sha)
+        if sha == "bbb":
+            return "success"
+        if sha == "ddd":
+            return "failure"
+        return "pending"
+
+    outcome = run_git_update(project, runner, check=check)
+    assert outcome.ok is True
+    assert outcome.changed is True
+    assert checked == ["ccc", "bbb"]
+    assert merges == ["bbb"]
+
+    merges.clear()
+    checked.clear()
+
+    def failed_tip(args, _cwd):
+        if args == ["git", "rev-parse", "HEAD"]:
+            return CommandResult(0, "aaa\n", "")
+        if args == ["git", "fetch", "origin"]:
+            return CommandResult(0, "", "")
+        if args == ["git", "rev-parse", "origin/main"]:
+            return CommandResult(0, "ddd\n", "")
+        if args[:2] == ["git", "rev-list"]:
+            return CommandResult(0, "ddd\n", "")
+        if args[:3] == ["git", "merge", "--ff-only"]:
+            merges.append(args[3])
+            return CommandResult(0, "Fast-forward\n", "")
+        return CommandResult(1, "", f"unexpected {args}")
+
+    refused = run_git_update(project, failed_tip, check=check)
+    assert refused.ok is False
+    assert merges == []
+    assert "ddd"[:7] in refused.message
+    assert "Tests failed" in refused.message
+
+
+def test_release_job_starts_tests_on_the_cut_commit():
+    import yaml
+
+    from suit_o.config import PROJECT_ROOT
+
+    workflow = yaml.safe_load((PROJECT_ROOT.parent / ".github" / "workflows" / "suit-o-tests.yml").read_text())
+    trigger = workflow[True]
+    assert trigger["push"]["branches"] == ["main"]
+    assert trigger["workflow_dispatch"] is None
+    release = workflow["jobs"]["release"]
+    assert release["needs"] == "pytest"
+    assert release["permissions"]["contents"] == "write"
+    assert release["permissions"]["actions"] == "write"
+    steps = {step["name"]: step for step in release["steps"] if "name" in step}
+    assert "grep -q '^Tagged '" in steps["Cut the release"]["run"]
+    assert steps["Push the version and tag"]["if"] == "steps.cut.outputs.cut == 'true'"
+    dispatch = steps["Test the release commit"]
+    assert dispatch["if"] == "steps.cut.outputs.cut == 'true'"
+    assert "gh workflow run suit-o-tests.yml --ref main" in dispatch["run"]
+    assert dispatch["env"]["GH_TOKEN"] == "${{ secrets.GITHUB_TOKEN }}"
 
 
 def test_restart_waits_for_the_menu_or_the_end_of_the_round(tmp_path: Path):
