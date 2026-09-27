@@ -10,6 +10,8 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+## [0.19.9] - 2026-09-27
+
 ### Fixed
 
 - Update reports an error when the checkout is not the commit whose tests were checked. (`234fdb1`)
