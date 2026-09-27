@@ -27,15 +27,16 @@ Projects do not import code from each other. If one grows dependencies, those li
 
 ## Move a project into its own repository
 
-When one project should live in a separate private repository, split out the commits that touched its folder and push that history to the new remote. Do this from a clean working tree. Work in a copy or a new branch so this repo's `main` history stays as it is. Afterward, check `git log` in the new repo and confirm the files look right before deleting the folder here.
+When one project should live in a separate private repository, split out the commits that touched its folder and push that history to the new remote. Start from an up-to-date `main` and a clean working tree. Both methods below leave this repository's history unchanged. Afterward, check `git log` in the new repo and confirm the files look right before deleting the folder here.
 
 History that comes along is the commits that changed files inside that project folder. If a file was moved in from elsewhere in grok-repos, the commits from before that move usually stay behind.
 
 ### git subtree split
 
-This is built into Git. It writes a branch whose root is the project folder.
+This is built into Git. From the grok-repos root, on `main`, it writes a branch whose root is the project folder.
 
 ```bash
+git checkout main
 git subtree split --prefix=projects/<name> -b <name>-split
 ```
 
@@ -52,10 +53,10 @@ git push -u origin main
 
 ### git filter-repo
 
-[`git filter-repo`](https://github.com/newren/git-filter-repo) rewrites a clone so only one folder remains, and that folder becomes the repository root. It is not part of Git; install it with `pip install git-filter-repo` if the command is missing. Run it on a fresh clone. It removes the `origin` remote on purpose so the rewrite cannot be pushed back here by mistake.
+[`git filter-repo`](https://github.com/newren/git-filter-repo) rewrites a clone so only one folder remains, and that folder becomes the repository root. It is not part of Git; install it with `pip install git-filter-repo` if the command is missing. Run it on a fresh clone of `main`. It removes the `origin` remote on purpose so the rewrite cannot be pushed back here by mistake.
 
 ```bash
-git clone --no-local /path/to/grok-repos ../<name>
+git clone --no-local --single-branch --branch main /path/to/grok-repos ../<name>
 cd ../<name>
 git filter-repo --subdirectory-filter projects/<name>
 git remote add origin <private-repo-url>
