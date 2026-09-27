@@ -22,6 +22,10 @@ MISSING_CFG_WARNING = (
 UNWRITTEN_CFG_WARNING = (
     "Suit-O found CS2's gamestate config but could not update it, so it did not change the GSI key."
 )
+MISMATCH_CFG_WARNING = (
+    "Suit-O found a CS2 gamestate config that already has a different key, so it left that file unchanged. "
+    "Game updates are rejected until that key matches config.local.yaml."
+)
 _CS2_CFG = Path("steamapps/common/Counter-Strike Global Offensive/game/csgo/cfg")
 _TOKEN_LINE = re.compile(r'"token"\s+"([^"]*)"')
 _VDF_PATH = re.compile(r'"path"\s+"((?:\\.|[^"])*)"', re.IGNORECASE)
@@ -36,8 +40,11 @@ class TokenSetup:
 def ensure_personal_token(config_path: Path, cfg_files: list[Path] | None = None) -> TokenSetup:
     """Keep an existing GSI key, or write a new one only after the CS2 cfg is updated.
 
-    A new token is not saved when the cfg file cannot be found or written.
-    The token is not logged. The tracked cfg in the repository is left alone.
+    A saved local key is copied into every discovered cfg that still has the
+    sample key. A cfg that already has a different key is left alone, and the
+    warning is shown in the window. A new token is not saved when the cfg file
+    cannot be found or written. The token is not logged. The tracked cfg in
+    the repository is left alone.
     """
 
     config_path = Path(config_path)
@@ -51,7 +58,7 @@ def ensure_personal_token(config_path: Path, cfg_files: list[Path] | None = None
     if current and current != SAMPLE_TOKEN:
         if not cfgs:
             return TokenSetup(False, MISSING_CFG_WARNING)
-        return TokenSetup(False, "")
+        return TokenSetup(False, _sync_saved_token(cfgs, current))
     existing = _existing_cfg_token(cfgs)
     if existing:
         _remember(local_path, data, existing)
@@ -160,6 +167,29 @@ def _paths_in_manifest(path: Path) -> list[Path]:
 
 def _outside(paths: list[Path]) -> list[Path]:
     return [path for path in paths if not _inside_project(path)]
+
+
+def _sync_saved_token(cfgs: list[Path], token: str) -> str:
+    """Copy ``token`` into sample-key cfgs. Leave a different real key unchanged."""
+
+    failed = False
+    mismatched = False
+    for cfg in cfgs:
+        found = _cfg_token(cfg)
+        if found == token:
+            continue
+        if found == SAMPLE_TOKEN:
+            if not _replace_sample(cfg, token):
+                failed = True
+            continue
+        if found:
+            mismatched = True
+    parts: list[str] = []
+    if failed:
+        parts.append(UNWRITTEN_CFG_WARNING)
+    if mismatched:
+        parts.append(MISMATCH_CFG_WARNING)
+    return " ".join(parts)
 
 
 def _existing_cfg_token(paths: list[Path]) -> str:

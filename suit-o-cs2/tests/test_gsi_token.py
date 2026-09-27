@@ -97,6 +97,69 @@ def test_existing_cfg_key_is_kept_and_a_missing_cfg_is_not_replaced(tmp_path: Pa
     assert not local_config_path(third).exists()
 
 
+def _cfg_with_token(folder: Path, token: str) -> Path:
+    cfg = folder / "cfg" / CFG_NAME
+    cfg.parent.mkdir(parents=True)
+    text = (PROJECT_ROOT / "gamestate_integration_suito.cfg").read_text(encoding="utf-8")
+    cfg.write_text(text.replace(SAMPLE_TOKEN, token), encoding="utf-8")
+    return cfg
+
+
+def _write_local_token(config_path: Path, token: str) -> None:
+    local_config_path(config_path).write_text(
+        f"server:\n  token: {token}\n",
+        encoding="utf-8",
+    )
+
+
+def test_an_existing_local_token_is_copied_into_a_sample_cfg(tmp_path: Path):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_bytes(DEFAULT_CONFIG_PATH.read_bytes())
+    _write_local_token(config_path, "older-build-token")
+    cfg = _cfg_with_token(tmp_path, SAMPLE_TOKEN)
+
+    synced = ensure_personal_token(config_path, cfg_files=[cfg])
+    assert synced.created is False
+    assert synced.warning == ""
+    written = cfg.read_text(encoding="utf-8")
+    assert SAMPLE_TOKEN not in written
+    assert written.count("older-build-token") == 1
+    saved = yaml.safe_load(local_config_path(config_path).read_text(encoding="utf-8"))
+    assert saved["server"]["token"] == "older-build-token"
+
+
+def test_a_cfg_that_already_matches_is_not_rewritten(tmp_path: Path):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_bytes(DEFAULT_CONFIG_PATH.read_bytes())
+    _write_local_token(config_path, "older-build-token")
+    cfg = _cfg_with_token(tmp_path, "older-build-token")
+    before = cfg.read_bytes()
+    stamp = cfg.stat().st_mtime_ns
+
+    same = ensure_personal_token(config_path, cfg_files=[cfg])
+    assert same.created is False
+    assert same.warning == ""
+    assert cfg.read_bytes() == before
+    assert cfg.stat().st_mtime_ns == stamp
+
+
+def test_a_cfg_with_a_different_key_is_not_overwritten(tmp_path: Path):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_bytes(DEFAULT_CONFIG_PATH.read_bytes())
+    _write_local_token(config_path, "older-build-token")
+    cfg = _cfg_with_token(tmp_path, "other-real-token")
+    before = cfg.read_bytes()
+
+    refused = ensure_personal_token(config_path, cfg_files=[cfg])
+    assert refused.created is False
+    assert "different key" in refused.warning
+    assert "older-build-token" not in refused.warning
+    assert "other-real-token" not in refused.warning
+    assert cfg.read_bytes() == before
+    saved = yaml.safe_load(local_config_path(config_path).read_text(encoding="utf-8"))
+    assert saved["server"]["token"] == "older-build-token"
+
+
 def test_a_corrupt_local_config_is_not_replaced(tmp_path: Path):
     config_path = tmp_path / "config.yaml"
     config_path.write_bytes(DEFAULT_CONFIG_PATH.read_bytes())
