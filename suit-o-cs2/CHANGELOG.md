@@ -12,7 +12,7 @@ New notes go under `## [Unreleased]`. Every push to `main` updates this file in 
 
 ### Removed
 
-- The `suit-o.log` file. Startup deletes a leftover log. Messages stay in the window, or on the console when you start Suit-O from a terminal.
+- The `suit-o.log` file. Startup deletes a leftover log. Messages stay in the window, or on the console when you start Suit-O from a terminal. (`6440bbb`)
 
 ### Fixed
 
