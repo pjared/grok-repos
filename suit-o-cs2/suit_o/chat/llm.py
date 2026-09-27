@@ -13,7 +13,9 @@ from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+from suit_o.chat.hotkey import DEFAULT_CHAT_PTT, normalize_ptt_key
 from suit_o.config import read_yaml_mapping
+from suit_o.lineups.hotkeys import HotkeyError
 from suit_o.local_config import local_config_path
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
@@ -45,6 +47,7 @@ class ChatSettings:
     model: str
     openai_url: str
     openai_key: str
+    ptt_key: str = "f8"
 
 
 def load_chat_settings(config_path: Path | None = None) -> ChatSettings:
@@ -77,12 +80,23 @@ def load_chat_settings(config_path: Path | None = None) -> ChatSettings:
         or chat.get("openai_key")
         or ""
     )
+    if "SUIT_O_CHAT_PTT" in os.environ:
+        raw_ptt = os.environ.get("SUIT_O_CHAT_PTT")
+    elif "ptt_key" in chat:
+        raw_ptt = chat.get("ptt_key")
+    else:
+        raw_ptt = DEFAULT_CHAT_PTT
+    try:
+        ptt_key = normalize_ptt_key(_text(raw_ptt))
+    except HotkeyError:
+        ptt_key = _text(raw_ptt) or DEFAULT_CHAT_PTT
     return ChatSettings(
         backend=backend,
         ollama_url=ollama_url.rstrip("/") or DEFAULT_OLLAMA_URL,
         model=model or DEFAULT_MODEL,
         openai_url=openai_url.rstrip("/"),
         openai_key=openai_key,
+        ptt_key=ptt_key,
     )
 
 

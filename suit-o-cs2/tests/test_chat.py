@@ -10,7 +10,9 @@ from tkinter import ttk
 
 from suit_o.app import SuitOApp
 from suit_o.chat.availability import chat_is_paused
+from suit_o.chat.hotkey import PttMonitor, keys_conflict, voice_key_warning
 from suit_o.chat.idle import IDLE_RELEASE_SECONDS, IdleRelease
+from suit_o.chat import stt as chat_stt
 from suit_o.chat.llm import (
     DEFAULT_MODEL,
     DEFAULT_OLLAMA_URL,
@@ -183,6 +185,8 @@ def test_shipped_chat_defaults_and_persona_is_content():
     assert settings.ollama_url == DEFAULT_OLLAMA_URL
     assert settings.model == DEFAULT_MODEL
     assert settings.openai_key == ""
+    assert settings.ptt_key == "f8"
+    assert settings.ptt_key != "v"
     text = load_persona()
     assert "over-apologetic" in text
     assert "copyrighted" in text
@@ -368,5 +372,85 @@ def test_chat_panel_shows_the_vram_note_and_releases_after_idle():
         panel._idle.touch(0)
         assert panel.poll_idle(now=IDLE_RELEASE_SECONDS) is True
         assert released == ["yes"]
+    finally:
+        root.destroy()
+
+
+def test_ptt_defaults_away_from_the_cs2_voice_key_and_warns_when_it_matches():
+    assert keys_conflict("f8", "v") is False
+    assert keys_conflict("V", "v") is True
+    assert keys_conflict("f8", "") is False
+    warning = voice_key_warning("v", "v")
+    assert "CS2 voice" in warning
+    assert voice_key_warning("f8", "v") == ""
+    assert voice_key_warning("ctrl+shift+m", "") == ""
+
+    monitor = PttMonitor()
+    assert monitor.poll(False) is None
+    assert monitor.poll(True) == "down"
+    assert monitor.poll(True) is None
+    assert monitor.poll(False) == "up"
+
+    chat_stt._model = object()
+    chat_stt.release_stt()
+    assert chat_stt._model is None
+
+
+def test_chat_ptt_key_is_saved_locally_and_the_panel_warns(tmp_path: Path, monkeypatch):
+    config = tmp_path / "config.yaml"
+    config.write_bytes(DEFAULT_CONFIG_PATH.read_bytes())
+    local = local_config_path(config)
+    local.write_text("chat:\n  openai_key: sk-test-secret\n", encoding="utf-8")
+    monkeypatch.delenv("SUIT_O_CHAT_PTT", raising=False)
+    store_personal_settings(config, chat_ptt_key="f9")
+    saved = local.read_text(encoding="utf-8")
+    assert "sk-test-secret" in saved
+    assert "f9" in saved
+    assert "sk-test-secret" not in config.read_text(encoding="utf-8")
+    assert load_chat_settings(config).ptt_key == "f9"
+
+    class _Ptt:
+        cs2_voice_key = "v"
+
+    class _Config:
+        ptt = _Ptt()
+
+    class _App:
+        def match_is_live(self) -> bool:
+            return False
+
+        def speak_chat(self, _text: str) -> None:
+            return None
+
+        def interrupt_chat(self) -> None:
+            return None
+
+    app = _App()
+    app.config_path = config
+    app.config = _Config()
+
+    monkeypatch.setattr("suit_o.gui.chat.whisper_available", lambda: False)
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        panel = ChatPanel(
+            ttk.Frame(root),
+            app,
+            schedule=lambda callback: callback(),
+            threaded=False,
+            generate=lambda _messages: iter(()),
+        )
+        assert panel.ptt_var.get() == "f9"
+        assert panel.ptt_warning.cget("text") == ""
+        panel.ptt_var.set("v")
+        assert "CS2 voice" in panel.ptt_warning.cget("text")
+        panel._key_down = lambda _label: True
+        panel.poll_hotkey()
+        assert panel._ptt_monitor.held is True
+        panel.poll_hotkey()
+        assert panel._ptt_monitor.held is True
+        panel._key_down = lambda _label: False
+        panel.poll_hotkey()
+        assert panel._ptt_monitor.held is False
     finally:
         root.destroy()

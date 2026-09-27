@@ -207,7 +207,7 @@ The persona is `lines/persona.txt`: an eager, jittery, over-apologetic helper wh
 
 The default model is a local [Ollama](https://ollama.com) server at `http://localhost:11434`, model `llama3.2` (change `chat.model` in `config.yaml`). If Ollama is not running, the tab says to start it and `ollama pull llama3.2`. An OpenAI-compatible endpoint is optional: set `chat.backend: openai`, and put `chat.openai_url` and `chat.openai_key` in `config.local.yaml`, or set `SUIT_O_OPENAI_BASE_URL` and `SUIT_O_OPENAI_API_KEY`. The key is never written to `config.yaml` and never logged.
 
-Push-to-talk uses [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (MIT) from `requirements-chat.txt`. That file is optional. When it is missing, the button is grey and the tab says how to install it. Manual typing still works.
+Push-to-talk uses [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (MIT) from `requirements-chat.txt`. That file is optional. When it is missing, **Hold to talk** is grey and the tab says how to install it. Manual typing still works. The hotkey defaults to `f8` (`chat.ptt_key`), which is not CS2's voice bind (`ptt.cs2_voice_key`, default `v`). Change it in the Chat tab or in `config.local.yaml`. If it is set to the same key as that voice bind, the tab warns you. Suit-O only reads the key on Windows. It does not send it to the game. The speech model is dropped with the chat model when the tab goes idle or a round goes live.
 
 ## Speech log
 

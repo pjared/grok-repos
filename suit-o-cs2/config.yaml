@@ -119,5 +119,7 @@ chat:
   backend: ollama
   ollama_url: http://localhost:11434
   model: llama3.2
+  # Hold this key to dictate. It is not CS2's voice bind (ptt.cs2_voice_key, default v).
+  ptt_key: f8
 
 lines_file: lines/lines.yaml

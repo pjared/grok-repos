@@ -13,10 +13,13 @@ from collections.abc import Iterator
 from tkinter import ttk
 
 from suit_o.app import SuitOApp
+from suit_o.chat.hotkey import PttMonitor, key_is_down, normalize_ptt_key, voice_key_warning
 from suit_o.chat.idle import IdleRelease
 from suit_o.chat.llm import ChatError, load_chat_settings, release_model, stream_reply
 from suit_o.chat.session import PAUSED, ChatSession
-from suit_o.chat.stt import WHISPER_INSTALL, SttError, transcribe, whisper_available
+from suit_o.chat.stt import WHISPER_INSTALL, SttError, release_stt, transcribe, whisper_available
+from suit_o.lineups.hotkeys import HotkeyError
+from suit_o.local_config import store_personal_settings
 
 _HINT = (
     "Type to Suit-O. He answers in text and in the voice selected on the Voice tab "
@@ -82,11 +85,28 @@ class ChatPanel:
         self.talk_hint.grid(row=0, column=1, sticky="w", padx=(8, 0))
         self._talk_cancel = threading.Event()
         self._talking = False
+        self._ptt_monitor = PttMonitor()
+        self._key_down = key_is_down
+        self._ptt_job: str | None = None
+
+        ptt = ttk.Frame(parent)
+        ptt.grid(row=4, column=0, sticky="ew", pady=(8, 0))
+        ptt.columnconfigure(1, weight=1)
+        ttk.Label(ptt, text="Push-to-talk key").grid(row=0, column=0, sticky="w")
+        self.ptt_var = tk.StringVar(value="f8")
+        self.ptt_entry = ttk.Entry(ptt, textvariable=self.ptt_var, width=18)
+        self.ptt_entry.grid(row=0, column=1, sticky="w", padx=(8, 8))
+        ttk.Button(ptt, text="Save key", command=self.save_ptt_key).grid(row=0, column=2, sticky="w")
+        self.ptt_warning = ttk.Label(ptt, wraplength=820, justify="left")
+        self.ptt_warning.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(4, 0))
+        self.ptt_var.trace_add("write", lambda *_args: self._paint_ptt_warning())
 
         self.status = ttk.Label(parent, wraplength=820, justify="left")
-        self.status.grid(row=4, column=0, sticky="ew", pady=(8, 0))
+        self.status.grid(row=5, column=0, sticky="ew", pady=(8, 0))
         self._paint_talk()
+        self._load_ptt_key()
         self.sync_paused(False)
+        self._arm_ptt(parent)
 
     def sync_paused(self, paused: bool) -> None:
         if paused:
@@ -183,12 +203,86 @@ class ChatPanel:
         )
 
     def _release_resident(self) -> None:
+        release_stt()
         if self._on_release is not None:
             self._on_release()
             return
         try:
             release_model(load_chat_settings(getattr(self.app, "config_path", None)))
         except Exception:
+            return
+
+    def save_ptt_key(self) -> None:
+        try:
+            label = normalize_ptt_key(self.ptt_var.get())
+        except HotkeyError as exc:
+            self.ptt_warning.configure(text=str(exc))
+            return
+        path = getattr(self.app, "config_path", None)
+        if path is None:
+            self.ptt_warning.configure(text="Suit-O needs a config file before it can save this key.")
+            return
+        try:
+            store_personal_settings(path, chat_ptt_key=label)
+        except (HotkeyError, OSError, ValueError) as exc:
+            self.ptt_warning.configure(text=str(exc))
+            return
+        self.ptt_var.set(label)
+        self._paint_ptt_warning()
+
+    def poll_hotkey(self) -> None:
+        if self.app.match_is_live():
+            if self._ptt_monitor.held:
+                self._ptt_monitor.poll(False)
+                self._talk_up(None)
+            return
+        edge = self._ptt_monitor.poll(bool(self._key_down(self.ptt_var.get())))
+        if edge == "down":
+            self._talk_down(None)
+        elif edge == "up":
+            self._talk_up(None)
+
+    def _load_ptt_key(self) -> None:
+        try:
+            settings = load_chat_settings(getattr(self.app, "config_path", None))
+            self.ptt_var.set(settings.ptt_key or "f8")
+        except Exception:
+            self.ptt_var.set("f8")
+        self._paint_ptt_warning()
+
+    def _paint_ptt_warning(self) -> None:
+        voice = ""
+        config = getattr(self.app, "config", None)
+        ptt = getattr(config, "ptt", None)
+        if ptt is not None:
+            voice = str(getattr(ptt, "cs2_voice_key", "") or "")
+        self.ptt_warning.configure(text=voice_key_warning(self.ptt_var.get(), voice))
+
+    def _arm_ptt(self, parent: ttk.Frame) -> None:
+        def tick() -> None:
+            try:
+                self.poll_hotkey()
+            except tk.TclError:
+                return
+            try:
+                self._ptt_job = parent.after(50, tick)
+            except tk.TclError:
+                self._ptt_job = None
+
+        try:
+            self._ptt_job = parent.after(50, tick)
+            parent.bind("<Destroy>", lambda _event: self._cancel_ptt(parent), add="+")
+        except tk.TclError:
+            self._ptt_job = None
+
+    def _cancel_ptt(self, parent: ttk.Frame) -> None:
+        job = self._ptt_job
+        self._ptt_job = None
+        if job is None:
+            return
+        try:
+            parent.after_cancel(job)
+        except tk.TclError:
             return
 
     def fill_from_speech(self, samples: list[float], sample_rate: int) -> None:
@@ -258,6 +352,7 @@ class ChatPanel:
             return
         self._talk_cancel.clear()
         self._talking = True
+        self._idle.touch(time.monotonic())
         self.status.configure(text="Listening...")
 
         def run() -> None:

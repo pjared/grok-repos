@@ -49,6 +49,7 @@ _SECTION_DEFAULTS = {
     "speech": SPEECH_DEFAULTS,
     "lineups": LINEUP_DEFAULTS,
     "updates": UPDATE_DEFAULTS,
+    "chat": {"ptt_key": "f8"},
 }
 _HEADER = (
     "# Per-user Suit-O settings. Git ignores this file.\n"
@@ -138,6 +139,7 @@ def store_personal_settings(
     menu_greeting: bool | None = None,
     voice_key: str = "",
     ptt_key: str = "",
+    chat_ptt_key: str | None = None,
 ) -> None:
     """Validate, then keep only values that differ from ``config.yaml``.
 
@@ -208,6 +210,10 @@ def store_personal_settings(
         "updates",
         {"check_on_launch": check_on_launch} if check_on_launch is not None else {},
     )
+    if chat_ptt_key is not None:
+        from suit_o.chat.hotkey import normalize_ptt_key
+
+        _apply_managed(overlay, base, "chat", {"ptt_key": normalize_ptt_key(chat_ptt_key)})
     _write_overlay(local_path, overlay)
 
 
