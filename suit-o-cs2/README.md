@@ -238,7 +238,7 @@ Pushes to `main` run that pytest job on `windows-latest` (`.github/workflows/sui
 
 **It does not sound like Suit-O yet.** Open Voice Training, record the script in your own voice, and press **Build voice**. Suit-O then renders every stock line for that voice. On the Voice tab, pick `Clone: Suit-O` and press **Preview** to hear a live line. In a match you hear the rendered files. A line with no file yet uses the Windows voice. If the Voice Training tab says the optional packages are missing, install them with `python -m pip install -r requirements-voice.txt` and start the window again so the render can run.
 
-**The desktop window opens and closes immediately.** Read `suit-o.log` in this folder. `pythonw` has no console, so startup errors are written there. A missing virtual environment is reported by the launcher itself.
+**The desktop window opens and closes immediately.** Suit-O shows the startup error in a dialog. It does not write `suit-o.log`. A missing virtual environment is reported by the launcher itself.
 
 **The voice list is empty or tiny.** Windows 10/11 often hides newer voices from classic SAPI. Install a speech voice under Settings → Time & language → Speech. Suit-O speaks with whatever SAPI can see.
 

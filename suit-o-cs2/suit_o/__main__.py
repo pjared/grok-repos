@@ -28,11 +28,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--mute", action="store_true", help="Start muted")
     args = parser.parse_args(argv)
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s",
-        datefmt="%H:%M:%S",
-    )
+    from suit_o.logging_setup import configure_logging
+
+    configure_logging()
     try:
         try:
             migrate_user_settings(args.config)

@@ -11,7 +11,7 @@ import logging
 import sys
 from pathlib import Path
 
-from suit_o.config import DEFAULT_CONFIG_PATH, PROJECT_ROOT, ConfigError, load_config
+from suit_o.config import DEFAULT_CONFIG_PATH, ConfigError, load_config
 from suit_o.local_config import migrate_user_settings
 from suit_o.reload import consume_activity_handoff, write_activity_handoff
 
@@ -36,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
         return _run(args.config, start_muted=args.mute)
     except Exception:
         logger.exception("Suit-O GUI failed")
-        _show_fatal("Suit-O could not start. See suit-o.log in the suit-o-cs2 folder.")
+        _show_fatal("Suit-O could not start.")
         return 1
 
 
@@ -100,25 +100,9 @@ def _run(config_path: Path, *, start_muted: bool) -> int:
 
 
 def _configure_logging() -> None:
-    handlers: list[logging.Handler] = []
-    try:
-        handlers.append(logging.FileHandler(PROJECT_ROOT / "suit-o.log", encoding="utf-8"))
-    except OSError:
-        pass
-    if sys.stderr is not None:
-        try:
-            handlers.append(logging.StreamHandler(sys.stderr))
-        except Exception:
-            pass
-    if not handlers:
-        handlers.append(logging.NullHandler())
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s",
-        datefmt="%H:%M:%S",
-        handlers=handlers,
-        force=True,
-    )
+    from suit_o.logging_setup import configure_logging
+
+    configure_logging()
 
 
 def _show_fatal(message: str) -> None:

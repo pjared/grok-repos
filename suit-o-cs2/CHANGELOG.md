@@ -10,6 +10,10 @@ New notes go under `## [Unreleased]`. Every push to `main` updates this file in 
 
 ## [Unreleased]
 
+### Removed
+
+- The `suit-o.log` file. Startup deletes a leftover log. Messages stay in the window, or on the console when you start Suit-O from a terminal.
+
 ### Fixed
 
 - Update fast-forwards to the exact commit whose `suit-o-tests.yml` run passed. A newer commit that landed after that check is not installed. (`0127af3`)
