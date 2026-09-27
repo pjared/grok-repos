@@ -10,6 +10,8 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Eve
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-09-27
+
 ### Fixed
 
 - A test that opens a Tk window skips itself when Tcl cannot create one, including a GitHub runner with no display. (`2288d7e`)
