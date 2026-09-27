@@ -23,6 +23,7 @@ Bomb coordinates and weapon lists may arrive in the payload because the config a
 | `config.yaml` | Shared settings: port, token, cooldowns, and the reserved push-to-talk key. This file stays in git. |
 | `config.local.yaml` | Your settings: output device, volume, mute, voice tuning, and the lineup overlay. Git ignores it. |
 | `gamestate_integration_suito.cfg` | The file you copy into the CS2 `cfg` folder. |
+| `CHANGELOG.md` | What changed, newest first, dated in Pacific Time. Update it in the same commit as every push to `main`. |
 
 ## Windows setup
 
