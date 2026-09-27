@@ -112,4 +112,12 @@ lineups:
   hotkey_previous: "ctrl+shift+left"
   hotkey_toggle: "ctrl+shift+h"
 
+# Chat tab. Talks only outside a live round. The key for an OpenAI-compatible
+# endpoint belongs in config.local.yaml (chat.openai_key) or SUIT_O_OPENAI_API_KEY.
+# It is not stored here.
+chat:
+  backend: ollama
+  ollama_url: http://localhost:11434
+  model: llama3.2
+
 lines_file: lines/lines.yaml

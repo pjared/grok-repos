@@ -548,6 +548,64 @@ class SuitOApp:
             emphasis=normalized.emphasis,
         )
 
+    def match_is_live(self) -> bool:
+        """True while a round is live and the player is not in the menu."""
+
+        return self.restart_blocked()
+
+    def speak_chat(self, text: str) -> None:
+        """Speak one chat sentence on the selected voice and output device.
+
+        A live match does nothing. The line is not written to the event log,
+        so a restart cannot leave a transcript on disk.
+        """
+
+        if self.match_is_live():
+            return
+        line = text.strip()
+        if not line:
+            return
+        if len(line) > 500:
+            line = line[:500].rstrip()
+        if self.config.speech.backend == "clone" and self.config.speech.voice:
+            self._speak_chat_clone(line)
+            return
+        self.speech.submit(
+            Utterance(event_type="chat", text=line, priority=100),
+            bypass_mute=True,
+        )
+
+    def interrupt_chat(self) -> None:
+        """Stop chat audio without shutting down the speech thread."""
+
+        self.speech.interrupt()
+
+    def _speak_chat_clone(self, line: str) -> None:
+        from suit_o.voice.runtime import runtime_status
+
+        if not runtime_status().installed:
+            self.speech.submit(
+                Utterance(event_type="chat", text=line, priority=100),
+                bypass_mute=True,
+            )
+            return
+        tuning = self.current_tuning()
+        preview_settings = SpeechConfig(
+            backend="clone",
+            voice=self.config.speech.voice,
+            rate=tuning.rate,
+            volume=tuning.volume,
+            output_device=self.config.speech.output_device,
+            pitch=tuning.pitch,
+            pause_ms=tuning.pause_ms,
+            emphasis=tuning.emphasis,
+            voices_dir=str(self.voices_dir),
+        )
+        preview_backend = self._backend_factory(preview_settings)
+        if isinstance(preview_backend, CloneSpeechBackend):
+            preview_backend.allow_live_synthesis()
+        self.speech.preview_with(line, tuning, preview_backend)
+
     def test_voice(self, text: str | None = None) -> str:
         """Speak a line on the current device, even when Suit-O is muted."""
 

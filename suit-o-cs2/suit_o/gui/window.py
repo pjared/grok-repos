@@ -42,6 +42,7 @@ from suit_o.gui.status import (
 )
 from suit_o.gui.drops import desktop_root
 from suit_o.gui.global_hotkeys import GlobalHotkeys
+from suit_o.gui.chat import ChatPanel
 from suit_o.gui.clips import ClipsPanel
 from suit_o.gui.lineups import LineupsPanel
 from suit_o.gui.overlay import LineupOverlay, monitors_for
@@ -103,10 +104,14 @@ class SuitOWindow:
         voice = ttk.Frame(self.notebook, padding=(8, 8, 8, 8))
         training = ttk.Frame(self.notebook, padding=(8, 8, 8, 8))
         lineups = ttk.Frame(self.notebook, padding=(8, 8, 8, 8))
+        chat = ttk.Frame(self.notebook, padding=(8, 8, 8, 8))
         self.notebook.add(listener, text="Listener")
         self.notebook.add(voice, text="Voice")
         self.notebook.add(training, text="Voice Training")
         self.notebook.add(lineups, text="Lineups")
+        self.notebook.add(chat, text="Chat")
+        chat.columnconfigure(0, weight=1)
+        chat.rowconfigure(1, weight=1)
         training.columnconfigure(0, weight=1)
         training.rowconfigure(0, weight=1)
         training_book = ttk.Notebook(training)
@@ -147,6 +152,11 @@ class SuitOWindow:
             schedule=lambda callback: self.root.after(0, callback),
         )
         self.lineups_panel = LineupsPanel(lineups, app, on_saved=self._bind_lineup_hotkeys)
+        self.chat_panel = ChatPanel(
+            chat,
+            app,
+            schedule=lambda callback: self.root.after(0, callback),
+        )
         self.overlay: LineupOverlay | None = None
         self.hotkeys = GlobalHotkeys()
         self._paint_volume_caption(app.config.speech.volume)
@@ -627,6 +637,9 @@ class SuitOWindow:
                     self.volume.set(percent)
                 self._paint_volume_caption(shot.volume)
         self._append_activity(shot.activity)
+        chat_panel = getattr(self, "chat_panel", None)
+        if chat_panel is not None:
+            chat_panel.sync_paused(self.app.match_is_live())
 
     def _set_status(self, dot: tk.Label, label: ttk.Label, text: str, tone: str) -> None:
         color = tone_color(tone)

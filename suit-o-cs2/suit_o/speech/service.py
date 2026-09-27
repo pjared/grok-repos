@@ -217,6 +217,26 @@ class SpeechService:
             with self._cv:
                 self._cv.wait(min(remaining, 0.05))
 
+    def interrupt(self) -> None:
+        """Stop the line that is playing and drop anything still queued.
+
+        The speech thread keeps running, so the next in-game line can still play.
+        """
+
+        with self._cv:
+            self._pending.clear()
+            speaker = self._current_speaker
+            playing = self._current is not None
+            self._cv.notify_all()
+        if not playing:
+            return
+        self.backend.stop()
+        if speaker is not None and speaker is not self.backend:
+            try:
+                speaker.stop()
+            except Exception:
+                logger.debug("Could not stop the active speech backend", exc_info=True)
+
     def stop(self) -> None:
         with self._cv:
             self._stop = True

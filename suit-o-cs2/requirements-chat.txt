@@ -1,0 +1,5 @@
+# Optional push-to-talk for the Chat tab. The base app and CI do not install this.
+# faster-whisper is MIT. https://github.com/SYSTRAN/faster-whisper
+faster-whisper>=1.1.0
+# Microphone capture. Same library Voice Training uses. MIT.
+sounddevice>=0.5.1

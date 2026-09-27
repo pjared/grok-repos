@@ -4,7 +4,7 @@ Suit-O is a local companion for Counter-Strike 2. While you play, it listens to 
 
 The voice is an original parody of a jittery corporate suit-assistant. He stammers, offers "Helpful tip:" advice nobody asked for, is proud of a useless "detective mode," gets huffy and threatens to report the developers when the economy is a shortcut, and treats every goodbye like a finale. The lines are written for Suit-O. They are not quotes from another game.
 
-Suit-O v1 runs on your PC. It uses Windows' built-in speech synthesizer. It does not call an AI API, does not read the microphone, and does not send audio to voice chat.
+Suit-O runs on your PC. In-game lines use Windows' built-in speech synthesizer, or a voice you clone locally. Playback stays on a headset or speakers and never goes to voice chat. The Chat tab is separate: between matches it can ask a local Ollama server, or an OpenAI-compatible endpoint you configure, and it listens to the microphone only while you hold push-to-talk.
 
 ## What it uses from the game
 
@@ -196,6 +196,18 @@ lineups/<map>/<t|ct>/order.txt     optional order, one filename per line
 Use the CS2 map id, such as `de_dust2` or `de_mirage`. A short folder name (`dust2`) is also accepted. `t` and `ct` are the two sides. Empty folders for the current premier maps are already there. The **Lineups** tab lists every lineup in the imported pack. A map list, taken from the pack's `maps` array, shows each map with a count. Filters narrow that list by side, grenade, and status (`draft` or `verified`). Each grenade has a simple drawn icon in the list and on the overlay. The tab can also import PNGs for a map and side, rename them, set a caption, reorder them, and preview them. It saves the card width, opacity, corner, and monitor. Images you add stay on your machine; png and caption files under `lineups/` are gitignored.
 
 **Import pack** accepts a folder or a `.zip` of that whole folder. The format is version 1 in `lineups/pack.schema.json`. `lineups.json` is `{"version": 1, "maps": ["mirage", ...], "lineups": [...]}`. Each lineup has an id, map, side (`T` or `CT`), grenade (`smoke`, `flash`, `molotov`, or `he`), name, stand, aim, throw type, throw, covers, stand and aim image paths relative to the pack root, a `setpos` string, and status (`draft` or `verified`). Optional `notes`, `source_url`, `source_timestamp`, `second_source_url`, and `verified_by_second_source` are kept, and so is any other field. The first time a pack brings an unknown field, the event log names it once. The detail view shows the notes and the source link. `lineups/example-pack/lineups.json` is an example with no photos. Suit-O checks the file, then copies it into `lineup-data/` (gitignored). Importing the same id again replaces that lineup and leaves the others. Those images belong to their creators and stay on your machine; do not commit them. **Copy setpos** on the Lineups tab copies the practice-server console text. Suit-O never sends it to CS2.
+
+## Chat
+
+The **Chat** tab is for talking to Suit-O between matches. Type a message, or hold **Hold to talk** when push-to-talk is installed. He answers in character, in the voice selected on the Voice tab, through the output device on the Listener tab. Replies show up as they stream, and he starts speaking at each sentence. **Stop** cuts him off. **Clear chat** forgets the conversation.
+
+A live round shows **paused during match**. Chat does not call the model or speak during that round, so it does not compete with in-game lines.
+
+The persona is `lines/persona.txt`: an eager, jittery, over-apologetic helper who is also a teammate. Replies are supposed to stay short. He does not recite copyrighted game dialogue. Editing that file reloads on the next message. The transcript stays in memory, like the event log. Suit-O does not write it to a file.
+
+The default model is a local [Ollama](https://ollama.com) server at `http://localhost:11434`, model `llama3.2` (change `chat.model` in `config.yaml`). If Ollama is not running, the tab says to start it and `ollama pull llama3.2`. An OpenAI-compatible endpoint is optional: set `chat.backend: openai`, and put `chat.openai_url` and `chat.openai_key` in `config.local.yaml`, or set `SUIT_O_OPENAI_BASE_URL` and `SUIT_O_OPENAI_API_KEY`. The key is never written to `config.yaml` and never logged.
+
+Push-to-talk uses [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (MIT) from `requirements-chat.txt`. That file is optional. When it is missing, the button is grey and the tab says how to install it. Manual typing still works.
 
 ## Speech log
 
