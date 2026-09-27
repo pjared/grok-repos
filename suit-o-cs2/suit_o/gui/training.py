@@ -15,7 +15,14 @@ from suit_o.app import SuitOApp
 from suit_o.config import ConfigError
 from suit_o.gui.drops import enable_file_drop
 from suit_o.voice.clips import ClipError
-from suit_o.voice.intake import IntakeError, classify_path, import_short_clip
+from suit_o.voice.clips import load_media
+from suit_o.voice.intake import (
+    IntakeError,
+    classify_path,
+    import_short_clip,
+    keep_speaker,
+    run_cleanup,
+)
 from suit_o.voice.library import ClipLibrary, LibraryError
 from suit_o.voice.runtime import runtime_status
 from suit_o.voice.script import DEFAULT_SCRIPT_PATH, ScriptError, load_script
@@ -77,6 +84,10 @@ class TrainingPanel:
         self._on_profile_built = on_profile_built
         self._schedule = schedule
         self._on_long_file = on_long_file
+        self._async_cleanup = True
+        self._separator = None
+        self._diarizer = None
+        self._choose_speaker = None
         self._recorder = _LiveRecorder()
         self._playing = False
         self._meter_job: str | None = None
@@ -167,19 +178,40 @@ class TrainingPanel:
         self.library_label = ttk.Label(files, text="Usable: 0s")
         self.library_label.grid(row=0, column=1, sticky="w", padx=(12, 0))
         self.name.trace_add("write", lambda *_args: self._paint_duration())
+        cleanup = ttk.Frame(parent)
+        cleanup.grid(row=13, column=0, sticky="ew", pady=(6, 0))
+        cleanup.columnconfigure(2, weight=1)
+        self.separate_var = tk.BooleanVar(value=False)
+        self.pick_var = tk.BooleanVar(value=False)
+        self.separate_check = ttk.Checkbutton(
+            cleanup,
+            text="Separate vocals",
+            variable=self.separate_var,
+        )
+        self.separate_check.grid(row=0, column=0, sticky="w")
+        self.pick_check = ttk.Checkbutton(
+            cleanup,
+            text="Pick a speaker",
+            variable=self.pick_var,
+        )
+        self.pick_check.grid(row=0, column=1, sticky="w", padx=(12, 0))
+        self.cleanup_hint = ttk.Label(cleanup, wraplength=680, justify="left")
+        self.cleanup_hint.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(4, 0))
         ttk.Label(
             parent,
             text=(
                 "Drop wav, mp3, m4a, flac, ogg, or a video here. "
                 "Under 30 seconds becomes a library clip with a transcript you can edit. "
+                "Optional cleanup uses the same Demucs and pyannote passes as Clips, before the clip is saved. "
                 "Longer files open in Clips so you can cut them. Build voice uses the included clips."
             ),
             wraplength=680,
             justify="left",
-        ).grid(row=13, column=0, sticky="ew", pady=(4, 0))
+        ).grid(row=14, column=0, sticky="ew", pady=(4, 0))
         enable_file_drop(parent, self.import_paths)
 
         self.reload_microphones()
+        self._paint_cleanup()
         self._paint()
 
     def reload_microphones(self) -> None:
@@ -313,6 +345,8 @@ class TrainingPanel:
         added = 0
         longs: list[Path] = []
         problems: list[str] = []
+        notes: list[str] = []
+        shorts: list[tuple[Path, str]] = []
         for raw in paths:
             item = classify_path(Path(raw))
             if item.kind == "rejected":
@@ -321,26 +355,111 @@ class TrainingPanel:
             if item.kind == "long":
                 longs.append(item.path)
                 continue
-            supplied = _supplied_transcript(item.path, transcripts)
-            if supplied is not None:
-                transcript = supplied
-            elif ask_transcript:
-                typed = simpledialog.askstring(
-                    "Suit-O",
-                    f"Transcript for {item.path.name}",
-                    parent=self.line_text.winfo_toplevel(),
+            shorts.append((item.path, self._transcript_for(item.path, transcripts, ask_transcript)))
+        separate = self._pass_enabled(self.separate_var, self.separate_check)
+        pick = self._pass_enabled(self.pick_var, self.pick_check)
+        if shorts and (separate or pick) and self._async_cleanup:
+            if longs and self._on_long_file is not None:
+                self._on_long_file(longs[0])
+            self.status.configure(text="Cleaning the recording…")
+            token = self._hf_token()
+            separator = self._separator
+            diarizer = self._diarizer
+
+            def run() -> None:
+                ready: list[tuple] = []
+                worker_problems: list[str] = []
+                for path, transcript in shorts:
+                    try:
+                        samples, rate = load_media(path)
+                        cleaned = run_cleanup(
+                            samples,
+                            rate,
+                            separate=separate,
+                            pick_speaker=pick,
+                            token=token,
+                            separator=separator,
+                            diarizer=diarizer,
+                        )
+                        ready.append((path, transcript, rate, cleaned))
+                    except (IntakeError, ClipError, OSError, RuntimeError) as exc:
+                        worker_problems.append(str(exc))
+                self._schedule(
+                    lambda ready=ready, worker_problems=list(worker_problems): self._commit_cleaned(
+                        ready,
+                        library,
+                        name,
+                        longs,
+                        problems + worker_problems,
+                        notes,
+                    )
                 )
-                transcript = "" if typed is None else typed
-            else:
-                transcript = ""
+
+            threading.Thread(target=run, name="suit-o-upload-cleanup", daemon=True).start()
+            return
+        for path, transcript in shorts:
             try:
-                import_short_clip(item.path, library, transcript=transcript)
+                import_short_clip(
+                    path,
+                    library,
+                    transcript=transcript,
+                    separate=separate,
+                    pick_speaker=pick,
+                    token=self._hf_token(),
+                    separator=self._separator,
+                    diarizer=self._diarizer,
+                    choose_speaker=self._choose,
+                    notes=notes,
+                )
             except (IntakeError, ClipError, LibraryError, OSError) as exc:
                 problems.append(str(exc))
                 continue
             added += 1
         if longs and self._on_long_file is not None:
             self._on_long_file(longs[0])
+        self._report_import(added, name, library, longs, problems, notes)
+
+    def _transcript_for(self, path: Path, transcripts: dict | None, ask: bool) -> str:
+        supplied = _supplied_transcript(path, transcripts)
+        if supplied is not None:
+            return supplied
+        if not ask:
+            return ""
+        typed = simpledialog.askstring(
+            "Suit-O",
+            f"Transcript for {path.name}",
+            parent=self.line_text.winfo_toplevel(),
+        )
+        return "" if typed is None else typed
+
+    def _commit_cleaned(self, ready, library, name, longs, problems, notes) -> None:
+        added = 0
+        for path, transcript, rate, cleaned in ready:
+            try:
+                if cleaned.speakers:
+                    cleaned = keep_speaker(cleaned, self._choose(list(cleaned.speakers)), rate)
+                if cleaned.note:
+                    notes.append(cleaned.note)
+                duration = len(cleaned.samples) / float(rate) if rate else 0.0
+                if duration <= 0 or not cleaned.samples:
+                    raise IntakeError(f"{path.name} has no audio after cleanup")
+                label = path.stem.replace("_", " ").replace("-", " ").strip() or "Clip"
+                library.add_clip(
+                    cleaned.samples,
+                    rate,
+                    0.0,
+                    duration,
+                    label=label,
+                    transcript=transcript,
+                    included=True,
+                )
+            except (IntakeError, ClipError, LibraryError, OSError) as exc:
+                problems.append(str(exc))
+                continue
+            added += 1
+        self._report_import(added, name, library, longs, problems, notes)
+
+    def _report_import(self, added, name, library, longs, problems, notes) -> None:
         usable = self.session.recorded_seconds + library.included_duration()
         bits: list[str] = []
         if added:
@@ -351,6 +470,8 @@ class TrainingPanel:
                 rest = " Also long: " + ", ".join(path.name for path in longs[1:]) + "."
             where = "Opened" if self._on_long_file is not None else "Cut"
             bits.append(f"{where} {longs[0].name} in Clips (30s or longer).{rest}")
+        if notes:
+            bits.append(" ".join(notes))
         if problems:
             bits.append(" ".join(problems))
         bits.append(f"Usable audio: {usable:.0f}s.")
@@ -423,6 +544,57 @@ class TrainingPanel:
         if error:
             messagebox.showerror("Suit-O", error)
         self._paint()
+
+    def _pass_enabled(self, variable: tk.BooleanVar, check: ttk.Checkbutton) -> bool:
+        if "disabled" in check.state():
+            return False
+        return bool(variable.get())
+
+    def _hf_token(self) -> str:
+        from suit_o.voice.passes import read_hf_token
+
+        return read_hf_token(getattr(self.app, "config_path", None))
+
+    def _choose(self, names: list[str]) -> str | None:
+        if self._choose_speaker is not None:
+            return self._choose_speaker(names)
+        typed = simpledialog.askstring(
+            "Suit-O",
+            "Speakers: " + ", ".join(names) + "\nKeep which speaker?",
+            parent=self.line_text.winfo_toplevel(),
+        )
+        if typed is None:
+            return None
+        cleaned = typed.strip()
+        return cleaned if cleaned in names else names[0]
+
+    def _paint_cleanup(self) -> None:
+        from suit_o.voice.passes import HF_SETUP, demucs_status, pyannote_status
+
+        vocals_ok, vocals_message = demucs_status()
+        tags_ok, tags_message = pyannote_status()
+        token = self._hf_token()
+        if vocals_ok:
+            self.separate_check.state(["!disabled"])
+        else:
+            self.separate_check.state(["disabled"])
+            self.separate_var.set(False)
+        if tags_ok and token:
+            self.pick_check.state(["!disabled"])
+        else:
+            self.pick_check.state(["disabled"])
+            self.pick_var.set(False)
+        hints: list[str] = []
+        if not vocals_ok:
+            hints.append(vocals_message)
+        if not tags_ok:
+            hints.append(tags_message)
+        elif not token:
+            hints.append(HF_SETUP)
+        self.cleanup_hint.configure(
+            text=" ".join(hints)
+            or "Optional. Same passes as Clips. They run before a short file is added."
+        )
 
     def _paint(self) -> None:
         session = self.session

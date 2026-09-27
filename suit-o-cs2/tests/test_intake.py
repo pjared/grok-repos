@@ -140,3 +140,98 @@ def test_dropped_paths_keep_spaces_and_the_training_tab_imports_them(tmp_path: P
         assert "nope.txt" in panel.status.cget("text")
     finally:
         root.destroy()
+
+
+def test_short_upload_runs_the_clips_cleanup_passes(tmp_path: Path):
+    source = tmp_path / "booth.wav"
+    _tone(source, 1.0, rate=8000, amplitude=0.2)
+
+    def separator(samples, rate):
+        assert len(samples) == rate
+        return [0.4] * rate
+
+    def diarizer(_samples, rate):
+        class _Turn:
+            def __init__(self, speaker: str, start: float, end: float) -> None:
+                self.speaker = speaker
+                self.start = start
+                self.end = end
+
+        assert rate == 8000
+        return [_Turn("A", 0.0, 0.5), _Turn("B", 0.5, 1.0)]
+
+    notes: list[str] = []
+    record = import_short_clip(
+        source,
+        ClipLibrary(tmp_path / "voices", "Suit-O"),
+        transcript="cleaned",
+        separate=True,
+        pick_speaker=True,
+        token="hf-test-token",
+        separator=separator,
+        diarizer=diarizer,
+        choose_speaker=lambda names: "B" if names == ["A", "B"] else None,
+        notes=notes,
+    )
+    assert record.transcript == "cleaned"
+    text = " ".join(notes)
+    assert "vocal stem" in text
+    assert "Kept B" in text
+    assert "hf-test-token" not in text
+    samples, rate = read_wav(ClipLibrary(tmp_path / "voices", "Suit-O").included_paths()[0])
+    assert rate > 0
+    early = samples[: len(samples) // 4]
+    late = samples[(3 * len(samples)) // 4 :]
+    assert max(abs(sample) for sample in early) < 0.05
+    assert max(abs(sample) for sample in late) > 0.5
+
+
+def test_training_cleanup_checks_use_the_clips_passes(tmp_path: Path, monkeypatch):
+    from suit_o.voice.passes import demucs_available
+
+    source = tmp_path / "booth.wav"
+    _tone(source, 0.4, rate=8000, amplitude=0.2)
+
+    class _App:
+        def __init__(self) -> None:
+            self.voices_dir = tmp_path / "voices"
+            self.config_path = None
+
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        panel = TrainingPanel(
+            ttk.Frame(root),
+            _App(),
+            on_profile_built=lambda _name: None,
+            schedule=lambda callback: callback(),
+        )
+        if not demucs_available():
+            assert "disabled" in panel.separate_check.state()
+            assert "requirements-clips.txt" in panel.cleanup_hint.cget("text")
+        monkeypatch.setattr("suit_o.voice.passes.demucs_status", lambda: (True, ""))
+        monkeypatch.setattr("suit_o.voice.passes.pyannote_status", lambda: (True, ""))
+        monkeypatch.setattr("suit_o.voice.passes.read_hf_token", lambda _path: "hf-test")
+        panel._paint_cleanup()
+        assert "disabled" not in panel.separate_check.state()
+        assert "disabled" not in panel.pick_check.state()
+        panel.separate_var.set(True)
+        panel.pick_var.set(True)
+        panel._async_cleanup = False
+        panel._separator = lambda _samples, rate: [0.3] * rate
+        panel._diarizer = lambda _samples, _rate: [_Speaker("A", 0.0, 0.4)]
+        panel._choose_speaker = lambda names: (_ for _ in ()).throw(AssertionError(names))
+        panel.import_paths([source], transcripts={source.name: "one speaker"}, ask_transcript=False)
+        assert "Kept A" in panel.status.cget("text")
+        assert "one speaker" in [
+            clip.transcript for clip in ClipLibrary(panel.app.voices_dir, "Suit-O").clips()
+        ]
+    finally:
+        root.destroy()
+
+
+class _Speaker:
+    def __init__(self, speaker: str, start: float, end: float) -> None:
+        self.speaker = speaker
+        self.start = start
+        self.end = end
