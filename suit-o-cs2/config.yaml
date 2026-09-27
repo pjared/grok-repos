@@ -1,0 +1,81 @@
+# Suit-O v1. Copy gamestate_integration_suito.cfg into the CS2 cfg folder and
+# keep server.token identical to the token in that file.
+
+server:
+  host: 127.0.0.1
+  port: 3000
+  token: suito-local-change-me
+
+speech:
+  # pyttsx3 (Windows SAPI), stub (tests / simulator), or remote (not implemented).
+  backend: pyttsx3
+  # Substring of an installed SAPI voice name. Blank uses the engine default.
+  voice: ""
+  # Words per minute.
+  rate: 185
+  # 0.0 to 1.0. This is Suit-O's volume, not the game's.
+  volume: 0.85
+  # Playback device name substring. Blank uses the Windows default playback
+  # device (set your headset as the default output if you want Suit-O there).
+  # Do not set a microphone, stereo mix, or virtual cable into voice chat.
+  output_device: ""
+  remote:
+    # Reserved for a future HTTP TTS server on the home LAN. Ignored in v1.
+    url: ""
+
+mute: false
+
+cooldowns:
+  default_seconds: 6
+  per_event:
+    kill: 3
+    headshot_kill: 3
+    low_health: 15
+    warmup: 90
+    idle: 120
+    round_freezetime: 1
+    buy_low_money: 20
+
+rate_limit:
+  # Minimum seconds between lines. Events at or above preempt_min_priority
+  # can speak sooner and can interrupt a quieter line.
+  min_interval_seconds: 2.0
+
+preempt_min_priority: 70
+
+# Higher numbers win. Big moments sit at 70 and above so they can interrupt.
+priority:
+  ace: 100
+  multi_kill_4: 94
+  multi_kill_3: 90
+  bomb_planted: 86
+  death: 82
+  multi_kill_2: 78
+  bomb_exploded: 74
+  bomb_defused: 74
+  round_won: 60
+  round_lost: 58
+  headshot_kill: 50
+  match_end: 48
+  low_health: 44
+  match_start: 42
+  kill: 36
+  buy_low_money: 32
+  round_freezetime: 24
+  warmup: 14
+  idle: 10
+
+thresholds:
+  low_health: 30
+  # Rifle + helmet. Below this during freeze time, Suit-O uses the low-buy lines.
+  full_buy_money_ct: 4100
+  full_buy_money_t: 3700
+  full_buy_money_unknown: 4000
+
+# Reserved. v1 does not listen to this key and does not open a microphone.
+# If you set keybind, it must not be the same key as your CS2 voice chat bind.
+ptt:
+  keybind: ""
+  cs2_voice_key: "v"
+
+lines_file: lines/lines.yaml
