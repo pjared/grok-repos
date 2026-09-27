@@ -1,2 +1,5 @@
 -r requirements.txt
 pytest>=8.0
+# The silence slicer is numpy. The Windows pytest workflow installs this file
+# and does not install requirements-voice.txt or requirements-clips.txt.
+numpy>=1.26

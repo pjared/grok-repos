@@ -1,0 +1,9 @@
+# Optional vocal separation and speaker tags for the Clips page.
+# Manual in/out points and auto-split on silence do not need this file.
+# Demucs and pyannote download models on first use. Suit-O tests do not.
+
+-r requirements-voice.txt
+torch>=2.2
+torchaudio>=2.2
+demucs>=4.0
+pyannote.audio>=3.1

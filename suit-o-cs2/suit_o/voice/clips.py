@@ -1,7 +1,8 @@
 """Cut a long recording into training clips.
 
-Silence boundaries come from auditok. Resampling and peak normalization use
-librosa, which is how Chatterbox loads a reference clip. No GUI here.
+Silence boundaries use the audio-slicer algorithm. Resampling and peak
+normalization use librosa when it is installed, which is how Chatterbox loads
+a reference clip. No GUI here.
 """
 
 from __future__ import annotations
@@ -29,13 +30,13 @@ def split_on_silence(
     samples: list[float],
     sample_rate: int,
     *,
-    threshold: float = 55,
+    threshold: float = -40,
     min_length: float = 0.4,
     min_silence: float = 0.3,
 ) -> list[tuple[float, float]]:
-    """Speech regions as ``(start, end)`` seconds, from auditok.
+    """Speech regions as ``(start, end)`` seconds, from audio-slicer.
 
-    ``threshold`` is auditok's energy threshold: a higher value keeps only
+    ``threshold`` is a decibel level. A higher value (closer to 0) keeps only
     louder audio. A gap splits a region when the silence lasts at least
     ``min_silence`` seconds. Regions shorter than ``min_length`` are dropped.
     """
@@ -43,28 +44,39 @@ def split_on_silence(
     if sample_rate < 1 or not samples:
         return []
     try:
-        import auditok
         import numpy as np
+
+        from suit_o.voice.audio_slicer import Slicer
     except ImportError as exc:
-        raise ClipError(f"Auto-split needs auditok. {_VOICE_INSTALL}") from exc
-    audio = np.clip(np.asarray(samples, dtype=np.float64), -1.0, 1.0)
-    pcm = (audio * 32767.0).astype(np.int16).tobytes()
+        raise ClipError(f"Auto-split needs numpy. {_VOICE_INSTALL}") from exc
+    hop_ms = 10
+    min_length_ms = max(hop_ms, int(round(float(min_length) * 1000)))
+    min_interval_ms = max(hop_ms, int(round(float(min_silence) * 1000)))
+    if min_interval_ms > min_length_ms:
+        min_interval_ms = min_length_ms
+    max_sil_kept = max(hop_ms, min(100, min_interval_ms))
+    audio = np.asarray(samples, dtype=np.float32)
     try:
-        found = auditok.split(
-            pcm,
-            min_dur=max(0.01, float(min_length)),
-            max_dur=None,
-            max_silence=max(0.0, float(min_silence)),
-            max_trailing_silence=0,
-            strict_min_dur=True,
-            energy_threshold=float(threshold),
-            sampling_rate=int(sample_rate),
-            sample_width=2,
-            channels=1,
+        slicer = Slicer(
+            sr=int(sample_rate),
+            threshold=float(threshold),
+            min_length=min_length_ms,
+            min_interval=min_interval_ms,
+            hop_size=hop_ms,
+            max_sil_kept=max_sil_kept,
         )
+        spans = slicer.spans(audio)
     except (ValueError, OSError, RuntimeError) as exc:
         raise ClipError(f"Could not split that recording. {exc}") from exc
-    return [(float(region.start), float(region.end)) for region in found]
+    regions: list[tuple[float, float]] = []
+    minimum = max(0.0, float(min_length))
+    for start, end in spans:
+        begin = start / float(sample_rate)
+        finish = end / float(sample_rate)
+        if finish - begin + 1e-4 < minimum:
+            continue
+        regions.append((float(begin), float(finish)))
+    return regions
 
 
 def delete_regions(regions: list[tuple[float, float]], indexes: list[int]) -> list[tuple[float, float]]:
@@ -89,16 +101,22 @@ def merge_regions(regions: list[tuple[float, float]], indexes: list[int]) -> lis
 
 
 def normalize_mono(samples: list[float], *, peak: float = TARGET_PEAK) -> list[float]:
-    """Peak-normalize with librosa, then leave headroom at ``peak``.
+    """Peak-normalize, then leave headroom at ``peak``.
 
-    Chatterbox loads a reference with ``librosa.load(..., sr=24000)``. This is
-    the same library, with the peak held under full scale so 16-bit WAV does
-    not clip. Silence stays silence.
+    When librosa is installed this uses ``librosa.util.normalize``, the same
+    library Chatterbox uses to load a reference. Silence stays silence.
     """
 
     if not samples:
         return []
-    librosa, np = _librosa()
+    try:
+        librosa, np = _librosa()
+    except ClipError:
+        loudest = max(abs(float(sample)) for sample in samples)
+        if loudest < 1e-8:
+            return [0.0] * len(samples)
+        gain = float(peak) / loudest
+        return [max(-1.0, min(1.0, float(sample) * gain)) for sample in samples]
     audio = np.asarray(samples, dtype=np.float32)
     loudest = float(np.max(np.abs(audio))) if audio.size else 0.0
     if loudest < 1e-8:
@@ -106,6 +124,24 @@ def normalize_mono(samples: list[float], *, peak: float = TARGET_PEAK) -> list[f
     normalized = librosa.util.normalize(audio, norm=np.inf)
     limited = np.clip(normalized * float(peak), -1.0, 1.0)
     return [float(sample) for sample in limited]
+
+
+def _resample_for_model(samples: list[float], sample_rate: int, target_rate: int) -> list[float]:
+    if sample_rate == target_rate:
+        return list(samples)
+    try:
+        librosa, np = _librosa()
+    except ClipError:
+        from suit_o.voice.wav import resample
+
+        new_length = max(1, int(round(len(samples) * target_rate / sample_rate)))
+        return resample(samples, new_length)
+    converted = librosa.resample(
+        np.asarray(samples, dtype=np.float32),
+        orig_sr=int(sample_rate),
+        target_sr=int(target_rate),
+    )
+    return [float(sample) for sample in converted]
 
 
 def slice_samples(samples: list[float], sample_rate: int, start: float, end: float) -> list[float]:
@@ -133,14 +169,7 @@ def export_clip(
     piece = slice_samples(samples, sample_rate, start, end)
     if not piece:
         raise ClipError("That clip is empty")
-    if sample_rate != target_rate:
-        librosa, np = _librosa()
-        converted = librosa.resample(
-            np.asarray(piece, dtype=np.float32),
-            orig_sr=int(sample_rate),
-            target_sr=int(target_rate),
-        )
-        piece = [float(sample) for sample in converted]
+    piece = _resample_for_model(piece, sample_rate, target_rate)
     piece = normalize_mono(piece)
     write_wav(dest, piece, target_rate)
     return piece, target_rate

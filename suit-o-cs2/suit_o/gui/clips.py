@@ -60,7 +60,8 @@ class ClipsPanel:
         self._source = ""
 
         parent.columnconfigure(0, weight=1)
-        parent.rowconfigure(8, weight=1)
+        parent.rowconfigure(9, weight=1)
+        self._turns = []
         ttk.Label(
             parent,
             text=(
@@ -129,18 +130,39 @@ class ClipsPanel:
         )
         hint.grid(row=4, column=0, sticky="w", pady=(4, 4))
 
+        cleanup = ttk.Frame(parent)
+        cleanup.grid(row=5, column=0, sticky="ew", pady=(2, 2))
+        cleanup.columnconfigure(1, weight=1)
+        self.separate_button = ttk.Button(cleanup, text="Separate vocals", command=self.separate_vocals)
+        self.separate_button.grid(row=0, column=0, sticky="w")
+        self.separate_hint = ttk.Label(cleanup, wraplength=640)
+        self.separate_hint.grid(row=0, column=1, sticky="w", padx=(8, 0))
+        self.tag_button = ttk.Button(cleanup, text="Tag speakers", command=self.tag_speakers)
+        self.tag_button.grid(row=1, column=0, sticky="w", pady=(4, 0))
+        self.tag_hint = ttk.Label(cleanup, wraplength=640)
+        self.tag_hint.grid(row=1, column=1, sticky="w", padx=(8, 0), pady=(4, 0))
+        speakers = ttk.Frame(cleanup)
+        speakers.grid(row=2, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        ttk.Label(speakers, text="Speaker").grid(row=0, column=0, sticky="w")
+        self.speaker = ttk.Combobox(speakers, width=16, state="readonly")
+        self.speaker.grid(row=0, column=1, sticky="w", padx=(6, 8))
+        self.preview_button = ttk.Button(speakers, text="Preview", command=self.preview_speaker)
+        self.preview_button.grid(row=0, column=2, sticky="w")
+        self.keep_button = ttk.Button(speakers, text="Keep this speaker", command=self.keep_speaker)
+        self.keep_button.grid(row=0, column=3, sticky="w", padx=(6, 0))
+
         split = ttk.Frame(parent)
-        split.grid(row=5, column=0, sticky="ew")
-        ttk.Label(split, text="Energy").grid(row=0, column=0, sticky="w")
-        self.threshold = tk.DoubleVar(value=55)
-        ttk.Scale(split, from_=35, to=80, variable=self.threshold, length=120).grid(row=0, column=1, padx=(6, 8))
+        split.grid(row=6, column=0, sticky="ew")
+        ttk.Label(split, text="dB").grid(row=0, column=0, sticky="w")
+        self.threshold = tk.DoubleVar(value=-40)
+        ttk.Scale(split, from_=-60, to=-15, variable=self.threshold, length=120).grid(row=0, column=1, padx=(6, 8))
         ttk.Label(split, text="Min length").grid(row=0, column=2, sticky="w")
         self.min_length = tk.DoubleVar(value=0.4)
         ttk.Scale(split, from_=0.2, to=2.0, variable=self.min_length, length=120).grid(row=0, column=3, padx=(6, 8))
         ttk.Button(split, text="Auto-split on silence", command=self.auto_split).grid(row=0, column=4, padx=(8, 0))
 
         proposals = ttk.Frame(parent)
-        proposals.grid(row=6, column=0, sticky="ew", pady=(6, 4))
+        proposals.grid(row=7, column=0, sticky="ew", pady=(6, 4))
         proposals.columnconfigure(0, weight=1)
         self.regions = tk.Listbox(proposals, height=4, selectmode="extended", exportselection=False)
         self.regions.grid(row=0, column=0, sticky="ew")
@@ -151,7 +173,7 @@ class ClipsPanel:
         ttk.Button(actions, text="Delete", command=self.delete_selected).grid(row=2, column=0, sticky="ew", pady=(4, 0))
 
         save = ttk.Frame(parent)
-        save.grid(row=7, column=0, sticky="ew", pady=(4, 4))
+        save.grid(row=8, column=0, sticky="ew", pady=(4, 4))
         save.columnconfigure(1, weight=1)
         ttk.Label(save, text="Label").grid(row=0, column=0, sticky="w")
         self.label = tk.StringVar()
@@ -182,10 +204,10 @@ class ClipsPanel:
         self.library.column("included", width=80, stretch=False)
         self.library.column("duration", width=70, stretch=False)
         self.library.column("transcript", width=360, stretch=True)
-        self.library.grid(row=8, column=0, sticky="nsew")
+        self.library.grid(row=9, column=0, sticky="nsew")
 
         library_buttons = ttk.Frame(parent)
-        library_buttons.grid(row=9, column=0, sticky="ew", pady=(6, 0))
+        library_buttons.grid(row=10, column=0, sticky="ew", pady=(6, 0))
         ttk.Button(library_buttons, text="Play clip", command=self.play_selected).grid(row=0, column=0)
         ttk.Button(library_buttons, text="Rename", command=self.rename_selected).grid(row=0, column=1, padx=(6, 0))
         ttk.Button(library_buttons, text="Edit transcript", command=self.edit_transcript).grid(
@@ -199,9 +221,10 @@ class ClipsPanel:
         self.duration_label.grid(row=0, column=5, sticky="w", padx=(12, 0))
 
         self.status = ttk.Label(parent, wraplength=820, justify="left")
-        self.status.grid(row=10, column=0, sticky="ew", pady=(6, 0))
+        self.status.grid(row=11, column=0, sticky="ew", pady=(6, 0))
         self._load_script_lines()
         self.reload_library()
+        self._paint_passes()
         self._draw()
 
     def open_recording(self) -> None:
@@ -325,6 +348,149 @@ class ClipsPanel:
             return
         self._paint_regions()
         self.status.configure(text=f"Proposed {len(self._regions)} clip(s). Accept, merge, or delete them.")
+
+    def separate_vocals(self) -> None:
+        if not self.samples:
+            self.status.configure(text="Open a recording first.")
+            return
+        from suit_o.voice.passes import separate_vocals
+
+        samples = list(self.samples)
+        rate = self.rate
+        self.status.configure(text="Separating vocals…")
+
+        def run() -> None:
+            try:
+                vocals = separate_vocals(samples, rate)
+            except ClipError as exc:
+                self._schedule(lambda: self.status.configure(text=str(exc)))
+                return
+            self._schedule(lambda: self._replace_audio(vocals, "Kept the vocal stem."))
+
+        threading.Thread(target=run, name="suit-o-demucs", daemon=True).start()
+
+    def tag_speakers(self) -> None:
+        if not self.samples:
+            self.status.configure(text="Open a recording first.")
+            return
+        from suit_o.voice.passes import diarize, read_hf_token
+
+        token = read_hf_token(self.app.config_path)
+        samples = list(self.samples)
+        rate = self.rate
+        self.status.configure(text="Tagging speakers…")
+
+        def run() -> None:
+            try:
+                turns = diarize(samples, rate, token=token)
+            except ClipError as exc:
+                self._schedule(lambda: self.status.configure(text=str(exc)))
+                return
+            self._schedule(lambda: self._show_speakers(turns))
+
+        threading.Thread(target=run, name="suit-o-pyannote", daemon=True).start()
+
+    def preview_speaker(self) -> None:
+        isolated = self._isolated()
+        if isolated is None:
+            return
+        self.pause()
+        self._play_buffer(isolated, "Previewing that speaker.")
+
+    def keep_speaker(self) -> None:
+        isolated = self._isolated()
+        if isolated is None:
+            return
+        name = self.speaker.get().strip()
+        self._replace_audio(isolated, f"Kept {name}. The other speakers are silent.")
+
+    def _isolated(self) -> list[float] | None:
+        name = self.speaker.get().strip()
+        if not name or not self._turns:
+            self.status.configure(text="Tag speakers, then pick one.")
+            return None
+        from suit_o.voice.passes import isolate_speaker
+
+        return isolate_speaker(self.samples, self.rate, self._turns, name)
+
+    def _show_speakers(self, turns) -> None:
+        self._turns = list(turns)
+        names: list[str] = []
+        for turn in self._turns:
+            if turn.speaker not in names:
+                names.append(turn.speaker)
+        self.speaker["values"] = names
+        if names:
+            self.speaker.set(names[0])
+        self.preview_button.configure(state="normal" if names else "disabled")
+        self.keep_button.configure(state="normal" if names else "disabled")
+        self.status.configure(text=f"Found {len(names)} speaker(s). Preview one, or keep only that speaker.")
+
+    def _replace_audio(self, samples: list[float], message: str) -> None:
+        self.pause()
+        self.samples = list(samples)
+        self.position = 0.0
+        duration = self._duration()
+        self.in_point = 0.0
+        self.out_point = duration
+        self.view_start = 0.0
+        self.view_span = duration or 1.0
+        self._regions = []
+        self._turns = []
+        self.speaker.set("")
+        self.speaker["values"] = ()
+        self._rebuild_peaks()
+        self._paint_regions()
+        self._paint_passes()
+        self._draw()
+        self.status.configure(text=message)
+
+    def _play_buffer(self, samples: list[float], message: str) -> None:
+        if not samples:
+            return
+        self._playing = True
+        self._cancel = threading.Event()
+        self._play_from = 0.0
+        self._play_mark = time.monotonic()
+        self.position = 0.0
+        output = self.app.config.speech.output_device
+        cancel = self._cancel
+        rate = self.rate
+
+        def run() -> None:
+            error = ""
+            try:
+                from suit_o.voice.capture import play_samples
+
+                play_samples(samples, rate, output, cancel=cancel)
+            except Exception as exc:
+                error = str(exc)
+            self._schedule(lambda: self._play_finished(error))
+
+        threading.Thread(target=run, name="suit-o-speaker-preview", daemon=True).start()
+        self.status.configure(text=message)
+        self._tick()
+
+    def _paint_passes(self) -> None:
+        from suit_o.voice.passes import HF_SETUP, demucs_status, pyannote_status, read_hf_token
+
+        vocals_ok, vocals_message = demucs_status()
+        self.separate_button.configure(state="normal" if vocals_ok else "disabled")
+        self.separate_hint.configure(text="" if vocals_ok else vocals_message)
+        tags_ok, tags_message = pyannote_status()
+        token = read_hf_token(self.app.config_path)
+        if not tags_ok:
+            self.tag_button.configure(state="disabled")
+            self.tag_hint.configure(text=tags_message)
+        elif not token:
+            self.tag_button.configure(state="disabled")
+            self.tag_hint.configure(text=HF_SETUP)
+        else:
+            self.tag_button.configure(state="normal")
+            self.tag_hint.configure(text="")
+        named = bool(self.speaker.get().strip())
+        self.preview_button.configure(state="normal" if named else "disabled")
+        self.keep_button.configure(state="normal" if named else "disabled")
 
     def merge_selected(self) -> None:
         indexes = list(self.regions.curselection())
