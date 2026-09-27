@@ -11,6 +11,7 @@ from __future__ import annotations
 import random
 import threading
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
@@ -26,6 +27,18 @@ _DEFAULT_CONTEXT = {
 }
 
 
+@dataclass(frozen=True)
+class LineDecision:
+    """A line to speak, or the reason Suit-O stayed quiet.
+
+    ``status`` is ``spoken``, ``mute``, ``cooldown``, ``rate-limit``, or
+    ``none`` when that event has no stock line.
+    """
+
+    text: str | None
+    status: str
+
+
 class LineProvider:
     """Interface for turning a game event into one spoken line.
 
@@ -36,6 +49,12 @@ class LineProvider:
 
     def select(self, event: GameEvent, now: float) -> str | None:  # pragma: no cover - interface
         raise NotImplementedError
+
+    def decide(self, event: GameEvent, now: float) -> LineDecision:
+        text = self.select(event, now)
+        if text:
+            return LineDecision(text, "spoken")
+        return LineDecision(None, "none")
 
 
 class YamlLineProvider(LineProvider):
@@ -97,28 +116,31 @@ class YamlLineProvider(LineProvider):
             self.muted = muted
 
     def select(self, event: GameEvent, now: float) -> str | None:
-        with self._lock:
-            return self._select(event, now)
+        return self.decide(event, now).text
 
-    def _select(self, event: GameEvent, now: float) -> str | None:
+    def decide(self, event: GameEvent, now: float) -> LineDecision:
+        with self._lock:
+            return self._decide(event, now)
+
+    def _decide(self, event: GameEvent, now: float) -> LineDecision:
         if self.muted:
-            return None
+            return LineDecision(None, "mute")
         key = event.type.value
         pool = self._lines.get(key) or []
         if not pool:
-            return None
+            return LineDecision(None, "none")
         last_at = self._last_at.get(key)
         cooldown = self._cooldowns.get(key, self._default_cooldown)
         if last_at is not None and now - last_at < cooldown:
-            return None
+            return LineDecision(None, "cooldown")
         if event.priority < self._preempt_min_priority:
             if self._last_global is not None and now - self._last_global < self._min_interval:
-                return None
+                return LineDecision(None, "rate-limit")
         choice = self._pick(key, pool)
         self._last_at[key] = now
         self._last_global = now
         self._last_line[key] = choice
-        return _render(choice, event.context)
+        return LineDecision(_render(choice, event.context), "spoken")
 
     def _pick(self, key: str, pool: list[str]) -> str:
         previous = self._last_line.get(key)

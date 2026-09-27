@@ -36,6 +36,7 @@ from suit_o.speech.clone_backend import CloneSpeechBackend
 from suit_o.speech.factory import create_backend
 from suit_o.speech.pyttsx3_backend import Pyttsx3Backend
 from suit_o.speech.service import SpeechService
+from suit_o.speechlog import SpeechLog, SpeechLogEntry
 from suit_o.speech.tuning import (
     VoiceTuning,
     list_sapi_voice_names,
@@ -110,6 +111,7 @@ class SuitOApp:
         voices_dir: Path | None = None,
         lineups_dir: Path | None = None,
         pack_dir: Path | None = None,
+        speech_log_dir: Path | None = None,
         backend_factory: Callable[[SpeechConfig], SpeechBackend] | None = None,
     ) -> None:
         self.config = config
@@ -124,6 +126,12 @@ class SuitOApp:
         self.lineups.set_smokes_only(config.lineups.smokes_only)
         self._match_activity: str | None = None
         self._match_round: str | None = None
+        self._speech_map = ""
+        self._speech_round: int | None = None
+        self.speech_log = SpeechLog(
+            speech_log_dir or (PROJECT_ROOT / "logs"),
+            keep_days=config.logs.keep_days,
+        )
         self._backend_factory = backend_factory or create_backend
         if not config.speech.voices_dir:
             config.speech.voices_dir = str(self.voices_dir)
@@ -407,14 +415,14 @@ class SuitOApp:
                 emphasis=override.emphasis,
                 voices_dir=str(self.voices_dir),
             )
-            self._record(f"preview: {line}")
+            self._log_speech("preview", line, "spoken", voice=override.voice)
             preview_backend = self._backend_factory(preview_settings)
             if isinstance(preview_backend, CloneSpeechBackend):
                 preview_backend.allow_live_synthesis()
             self.speech.preview_with(line, override, preview_backend)
             return line
         override = None if tuning is None else self._resolve_tuning(tuning)
-        self._record(f"preview: {line}")
+        self._log_speech("preview", line, "spoken", voice=None if override is None else override.voice)
         self.speech.preview(line, override)
         return line
 
@@ -552,7 +560,7 @@ class SuitOApp:
         line = (text or TEST_VOICE_LINE).strip()
         if not line:
             raise ValueError("Test voice needs a line to speak")
-        self._record(f"test: {line}")
+        self._log_speech("test", line, "spoken")
         self.speech.submit(
             Utterance(event_type="test", text=line, priority=100),
             bypass_mute=True,
@@ -570,6 +578,10 @@ class SuitOApp:
             self._match_activity = own.activity
         if snapshot.round_present and snapshot.round_phase:
             self._match_round = snapshot.round_phase
+        if snapshot.map_present and snapshot.map_name:
+            self._speech_map = snapshot.map_name
+        if snapshot.round_present and snapshot.round_number is not None:
+            self._speech_round = snapshot.round_number
 
     def lineup_view(self) -> DeckView:
         """Current overlay card. Safe to call from the window thread."""
@@ -742,6 +754,8 @@ class SuitOApp:
             self.speech.apply_tuning(self.current_tuning())
             self.lineups.set_enabled(loaded.lineups.enabled)
             self.lineups.set_smokes_only(loaded.lineups.smokes_only)
+            self.speech_log.keep_days = loaded.logs.keep_days
+            self.speech_log.prune()
             tuning_changed = self.current_tuning() != previous_tuning
             backend_changed = (
                 loaded.speech.backend != previous_backend or loaded.speech.voice != previous_voice
@@ -865,13 +879,14 @@ class SuitOApp:
         ]
         events.sort(key=lambda event: -event.priority)
         for event in events:
-            text = self.lines.select(event, now)
-            if not text:
-                continue
-            self._record(f"{event.type.value}: {text}")
-            self.speech.submit(
-                Utterance(event_type=event.type.value, text=text, priority=event.priority)
-            )
+            decision = self.lines.decide(event, now)
+            if decision.status == "spoken" and decision.text:
+                self._log_speech(event.type.value, decision.text, "spoken")
+                self.speech.submit(
+                    Utterance(event_type=event.type.value, text=decision.text, priority=event.priority)
+                )
+            elif decision.status in {"mute", "cooldown", "rate-limit"}:
+                self._log_speech(event.type.value, "", decision.status)
 
     def _stdin_loop(self) -> None:
         host, port = self.server_address
@@ -896,6 +911,30 @@ class SuitOApp:
         """Append one line to the desktop log."""
 
         self._record(message)
+
+    def _log_speech(self, event: str, text: str, status: str, *, voice: str | None = None) -> None:
+        """Remember a spoken line, or a line mute or a cooldown held back."""
+
+        chosen = self.config.speech.voice if voice is None else voice
+        label = chosen.strip() or "engine default"
+        try:
+            self.speech_log.append(
+                SpeechLogEntry(
+                    at=time.time(),
+                    event=event,
+                    text=text,
+                    status=status,
+                    map_name=self._speech_map,
+                    round_number=self._speech_round,
+                    voice=label,
+                )
+            )
+        except OSError:
+            logger.exception("Could not write the speech log")
+        if status == "spoken":
+            self._record(f"{event}: {text}")
+        else:
+            self._record(f"{event}: skipped ({status.replace('-', ' ')})")
 
     def _record(self, message: str) -> None:
         with self._activity_lock:

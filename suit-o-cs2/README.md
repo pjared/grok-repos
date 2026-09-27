@@ -188,6 +188,10 @@ Use the CS2 map id, such as `de_dust2` or `de_mirage`. A short folder name (`dus
 
 **Import pack** accepts a folder or a `.zip` in the version 1 format described by `lineups/pack.schema.json`. `lineups/example-pack/lineups.json` is an example with no photos. Each lineup has an id, map, side (`T` or `CT`), grenade (`smoke`, `flash`, `molotov`, or `he`), stand spot, aim spot, throw type, and paths to a stand photo and an aim photo. Suit-O checks the file, then copies it into `lineup-data/` (gitignored). Importing the same id again replaces that lineup and leaves the others. Those images belong to their creators and stay on your machine; do not commit them. A `setpos` string in the pack is practice-server text only. Suit-O never sends it to CS2.
 
+## Speech log
+
+Every line Suit-O speaks is written to the Listener tab with a local time (`HH:MM:SS`), and appended to a daily file in `logs/` (`speech-YYYY-MM-DD.jsonl`). A line held back by mute or a cooldown is written too, marked `skipped (mute)` or `skipped (cooldown)`. Each file row has the time, the event, the line, that status, the map and round number when CS2 has sent them, and the voice name (or `engine default`). **Open log folder** opens `logs/`. **Copy** puts the lines currently in the window on the clipboard. `logs.keep_days` (14 by default) deletes a daily file once it is that many days old. The folder is gitignored. The game-state token is not written there.
+
 ## Updates without closing the window
 
 Leave the desktop window open. Suit-O watches `config.yaml`, `config.local.yaml`, `lines/`, `voices/`, and `lineups/`. A valid change applies immediately, including during a live round: volume, the output device, voice tuning, mute, stock lines, cloned-voice files, and lineup images. That reload does not stop the game-state listener. If a file is invalid, the previous settings stay in effect and the error is written in the event log.

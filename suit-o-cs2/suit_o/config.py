@@ -104,6 +104,13 @@ class UpdateConfig:
 
 
 @dataclass
+class LogConfig:
+    """How long daily speech logs in ``logs/`` are kept."""
+
+    keep_days: int = 14
+
+
+@dataclass
 class Thresholds:
     low_health: int
     full_buy_money_ct: int
@@ -133,6 +140,7 @@ class Config:
     lineups: LineupConfig
     lines_path: Path
     updates: UpdateConfig = field(default_factory=UpdateConfig)
+    logs: LogConfig = field(default_factory=LogConfig)
     warnings: list[str] = field(default_factory=list)
 
     def priority_for(self, event_type: EventType) -> int:
@@ -389,6 +397,13 @@ def parse_config(raw: dict, *, config_path: Path | None = None) -> Config:
     if not isinstance(check_on_launch, bool):
         raise ConfigError("updates.check_on_launch must be true or false")
 
+    logs_raw = raw.get("logs") or {}
+    if logs_raw and not isinstance(logs_raw, dict):
+        raise ConfigError("logs must be a mapping")
+    keep_days = _as_int(logs_raw.get("keep_days", 14), "logs.keep_days")
+    if keep_days < 1:
+        raise ConfigError("logs.keep_days must be at least 1")
+
     lines_value = raw.get("lines_file", "lines/lines.yaml")
     lines_path = Path(str(lines_value))
     if not lines_path.is_absolute():
@@ -424,6 +439,7 @@ def parse_config(raw: dict, *, config_path: Path | None = None) -> Config:
         lineups=lineups,
         lines_path=lines_path,
         updates=UpdateConfig(check_on_launch=check_on_launch),
+        logs=LogConfig(keep_days=keep_days),
         warnings=warnings,
     )
 
