@@ -12,7 +12,7 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ### Fixed
 
-- Only one cloned-voice render runs at a time. A second request is queued on that render instead of starting another.
+- Only one cloned-voice render runs at a time. A second request is queued on that render instead of starting another. (`a7d5817`)
 
 ## [0.19.10] - 2026-09-27
 
