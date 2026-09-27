@@ -12,9 +12,9 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Eve
 
 ### Fixed
 
-- A test that opens a Tk window skips itself when Tcl cannot create one, including a GitHub runner with no display.
-- Startup closes a leftover log handler before it deletes `suit-o.log`, so Windows can remove the file.
-- The Windows test run installs `tzdata` so the release step can date a version in Pacific time.
+- A test that opens a Tk window skips itself when Tcl cannot create one, including a GitHub runner with no display. (`2288d7e`)
+- Startup closes a leftover log handler before it deletes `suit-o.log`, so Windows can remove the file. (`2288d7e`)
+- The Windows test run installs `tzdata` so the release step can date a version in Pacific time. (`2288d7e`)
 
 ### Changed
 
