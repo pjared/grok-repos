@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty, Full, Queue
 
-from suit_o.config import Config, ConfigError
+from suit_o.config import PROJECT_ROOT, Config, ConfigError, SpeechConfig
 from suit_o.events.detector import EventDetector
 from suit_o.gsi.parse import parse_payload
 from suit_o.gsi.server import GsiServer
@@ -25,7 +25,10 @@ from suit_o.speech.devices import (
     resolve_output_device,
     selectable_playback_names,
 )
+from suit_o.lines.provider import stock_line_texts
+from suit_o.speech.clone_backend import CloneSpeechBackend
 from suit_o.speech.factory import create_backend
+from suit_o.speech.pyttsx3_backend import Pyttsx3Backend
 from suit_o.speech.service import SpeechService
 from suit_o.speech.tuning import (
     VoiceTuning,
@@ -33,6 +36,13 @@ from suit_o.speech.tuning import (
     normalize_tuning,
     resolve_voice_name,
 )
+from suit_o.voice.profile import (
+    clone_label,
+    is_clone_label,
+    list_profiles,
+    profile_name_from_label,
+)
+from suit_o.voice.runtime import INSTALL_HINT, runtime_status
 
 logger = logging.getLogger(__name__)
 
@@ -81,13 +91,19 @@ class SuitOApp:
         config_path: Path | None = None,
         output_devices: Callable[[], list[str]] | None = None,
         voices: Callable[[], list[str]] | None = None,
+        voices_dir: Path | None = None,
+        backend_factory: Callable[[SpeechConfig], SpeechBackend] | None = None,
     ) -> None:
         self.config = config
         self.config_path = config_path
         self._output_devices = output_devices
         self._voices = voices
+        self.voices_dir = voices_dir or (PROJECT_ROOT / "voices")
+        self._backend_factory = backend_factory or create_backend
+        if not config.speech.voices_dir:
+            config.speech.voices_dir = str(self.voices_dir)
         self._clock = clock or time.monotonic
-        self.backend = backend if backend is not None else create_backend(config.speech)
+        self.backend = backend if backend is not None else self._backend_factory(config.speech)
         self.speech = SpeechService(self.backend, config.preempt_min_priority)
         self.lines = line_provider or YamlLineProvider.from_file(
             config.lines_path,
@@ -120,6 +136,8 @@ class SuitOApp:
         self.speech.start()
         self.speech.apply_tuning(self.current_tuning())
         self.speech.set_muted(bool(getattr(self.lines, "muted", self.config.mute)))
+        if isinstance(self.backend, CloneSpeechBackend):
+            self._warm_clone(self.backend)
         self._worker = threading.Thread(target=self._worker_loop, name="suit-o-gsi", daemon=True)
         self._worker.start()
         self._httpd = GsiServer(
@@ -215,6 +233,29 @@ class SuitOApp:
                 self._record("Output device: Windows default playback device")
         return resolved
 
+    def voice_profiles(self):
+        return list_profiles(self.voices_dir)
+
+    def current_voice_label(self) -> str:
+        if self.config.speech.backend == "clone" and self.config.speech.voice:
+            return clone_label(self.config.speech.voice)
+        from suit_o.speech.tuning import selected_voice_label
+
+        return selected_voice_label(self.config.speech.voice, self.voice_names())
+
+    def voice_picker_labels(self) -> list[str]:
+        from suit_o.speech.tuning import voice_menu_labels
+
+        saved = "" if self.config.speech.backend == "clone" else self.config.speech.voice
+        labels = voice_menu_labels(self.voice_names(), saved)
+        for profile in self.voice_profiles():
+            if profile.label not in labels:
+                labels.append(profile.label)
+        current = self.current_voice_label()
+        if current and current not in labels:
+            labels.append(current)
+        return labels
+
     def voice_names(self) -> list[str]:
         """Installed SAPI voice names, or the injected list used by tests."""
 
@@ -247,22 +288,55 @@ class SuitOApp:
         """
 
         applied = self._resolve_tuning(tuning)
-        speech = self.config.speech
-        speech.voice = applied.voice
-        speech.rate = applied.rate
-        speech.volume = applied.volume
-        speech.pitch = applied.pitch
-        speech.pause_ms = applied.pause_ms
-        speech.emphasis = applied.emphasis
+        self._store_tuning(applied)
         self.speech.apply_tuning(applied)
         return applied
 
+    def apply_saved_voice(self, tuning: VoiceTuning, label: str) -> VoiceTuning:
+        """Save a Voice-tab choice, including a cloned profile.
+
+        A cloned label switches ``speech.backend`` to ``clone`` unless this
+        process is the in-memory stub used by tests and the simulator. Picking
+        a SAPI voice again leaves a previous clone and returns to pyttsx3.
+        """
+
+        if is_clone_label(label):
+            name = profile_name_from_label(label)
+            names = [profile.name for profile in self.voice_profiles()]
+            if not names:
+                raise ConfigError("No cloned voice has been built yet")
+            applied = self._resolve_tuning(
+                VoiceTuning(
+                    voice=name,
+                    rate=tuning.rate,
+                    volume=tuning.volume,
+                    pitch=tuning.pitch,
+                    pause_ms=tuning.pause_ms,
+                    emphasis=tuning.emphasis,
+                ),
+                names=names,
+            )
+            if self.config.speech.backend != "stub":
+                self.config.speech.backend = "clone"
+        else:
+            applied = self._resolve_tuning(tuning)
+            if self.config.speech.backend == "clone":
+                self.config.speech.backend = "pyttsx3"
+        self._store_tuning(applied)
+        self._install_backend()
+        return applied
+
     def reset_tuning(self) -> VoiceTuning:
-        """Restore the stock voice knobs. The caller saves them."""
+        """Restore the stock voice knobs. A cloned backend returns to SAPI."""
 
-        return self.apply_tuning(VoiceTuning.defaults())
+        applied = self.apply_tuning(VoiceTuning.defaults())
+        if self.config.speech.backend == "clone":
+            self.config.speech.backend = "pyttsx3"
+            self.config.speech.voice = ""
+            self._install_backend()
+        return applied
 
-    def preview_voice(self, text: str, tuning: VoiceTuning | None = None) -> str:
+    def preview_voice(self, text: str, tuning: VoiceTuning | None = None, *, label: str | None = None) -> str:
         """Speak ``text`` on the current output device, even when muted.
 
         ``tuning`` is used for this line only. Saved settings stay as they are
@@ -274,16 +348,86 @@ class SuitOApp:
             raise ValueError("Preview needs a line to speak")
         if len(line) > 500:
             line = line[:500].rstrip()
+        if label and is_clone_label(label) and self.config.speech.backend != "stub":
+            if not runtime_status().installed:
+                raise ConfigError(INSTALL_HINT)
+            name = profile_name_from_label(label)
+            names = [profile.name for profile in self.voice_profiles()]
+            base = tuning or self.current_tuning()
+            override = self._resolve_tuning(
+                VoiceTuning(
+                    voice=name,
+                    rate=base.rate,
+                    volume=base.volume,
+                    pitch=base.pitch,
+                    pause_ms=base.pause_ms,
+                    emphasis=base.emphasis,
+                ),
+                names=names,
+            )
+            preview_settings = SpeechConfig(
+                backend="clone",
+                voice=override.voice,
+                rate=override.rate,
+                volume=override.volume,
+                output_device=self.config.speech.output_device,
+                pitch=override.pitch,
+                pause_ms=override.pause_ms,
+                emphasis=override.emphasis,
+                voices_dir=str(self.voices_dir),
+            )
+            self._record(f"preview: {line}")
+            self.speech.preview_with(line, override, self._backend_factory(preview_settings))
+            return line
         override = None if tuning is None else self._resolve_tuning(tuning)
         self._record(f"preview: {line}")
         self.speech.preview(line, override)
         return line
 
-    def _resolve_tuning(self, tuning: VoiceTuning) -> VoiceTuning:
+    def _store_tuning(self, applied: VoiceTuning) -> None:
+        speech = self.config.speech
+        speech.voice = applied.voice
+        speech.rate = applied.rate
+        speech.volume = applied.volume
+        speech.pitch = applied.pitch
+        speech.pause_ms = applied.pause_ms
+        speech.emphasis = applied.emphasis
+
+    def _install_backend(self) -> None:
+        self.speech.apply_tuning(self.current_tuning())
+        if self.config.speech.backend == "stub":
+            return
+        if self._backend_matches():
+            return
+        self.config.speech.voices_dir = str(self.voices_dir)
+        backend = self._backend_factory(self.config.speech)
+        self.speech.set_backend(backend)
+        self.backend = backend
+        if isinstance(backend, CloneSpeechBackend):
+            self._warm_clone(backend)
+
+    def _backend_matches(self) -> bool:
+        current = self.speech.backend
+        kind = self.config.speech.backend
+        if kind == "clone":
+            return isinstance(current, CloneSpeechBackend)
+        if kind == "pyttsx3":
+            return isinstance(current, Pyttsx3Backend)
+        return True
+
+    def _warm_clone(self, backend: CloneSpeechBackend) -> None:
+        status = runtime_status()
+        if not status.installed:
+            self._record(status.summary)
+            return
+        backend.warm_stock_lines(stock_line_texts(self.config.lines_path))
+        self._record("Caching stock lines for the cloned voice")
+
+    def _resolve_tuning(self, tuning: VoiceTuning, *, names: list[str] | None = None) -> VoiceTuning:
         try:
             normalized = normalize_tuning(tuning)
-            names = self.voice_names()
-            voice = resolve_voice_name(normalized.voice, names if names else None)
+            available = self.voice_names() if names is None else names
+            voice = resolve_voice_name(normalized.voice, available if available else None)
         except ValueError as exc:
             raise ConfigError(str(exc)) from exc
         return VoiceTuning(
@@ -327,6 +471,7 @@ class SuitOApp:
             pitch=speech.pitch,
             pause_ms=speech.pause_ms,
             emphasis=speech.emphasis,
+            backend=speech.backend,
         )
 
     def activity(self) -> tuple[Activity, ...]:
@@ -442,6 +587,11 @@ class SuitOApp:
                     return
         except Exception:
             logger.debug("Console input ended", exc_info=True)
+
+    def note(self, message: str) -> None:
+        """Append one line to the desktop log."""
+
+        self._record(message)
 
     def _record(self, message: str) -> None:
         with self._activity_lock:

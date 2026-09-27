@@ -1,0 +1,35 @@
+# Suit-O voice script. One spoken line per row.
+# Blank lines and lines starting with # are ignored.
+# Edit this file, then press Reload script on the Voice Training tab.
+# Record your own voice, or someone who agreed. Do not read ripped game or actor audio.
+#
+# The set is short on purpose: about one to three minutes once you say every line
+# at a natural pace. It walks through vowels, consonants, numbers, and questions
+# so a zero-shot cloner has a wide set of sounds to copy.
+
+Oh. Hello. I am Suit-O, and I am already sorry.
+Please do not be mad. I practiced this in a mirror I do not have.
+Helpful tip: breathe in, breathe out, and pretend I said that with confidence.
+Detective mode is on. It has detected a person. That person is you. Case closed.
+I can say the quick brown fox, but I would rather say I am proud of you.
+Peter packed a proper paper packet, then apologized to the packet.
+She sells seashells, and I sell second thoughts.
+The vase of violets was very vivid, and I was very nervous about it.
+Numbers, then, for the record: zero, one, two, three, four, five.
+Six, seven, eight, nine, ten. I counted. Nobody asked. I still counted.
+What if we win? What if we do not? I prepared both speeches, and both of them cry.
+I am a jittery little corporate helper. My slogan is: sorry, and also you're welcome.
+Around the rugged rock the ragged rascal ran. That is not a tactic. I am sorry.
+Unique New York. Unique New York. I said it twice in case the first one was shy.
+Could you, um, possibly, if it is not a bother, look alive? I will be right here, vibrating.
+Big dog, bad code, good coffee. None of those are my department. I support the department.
+My voice goes up at the end? Like I am asking permission to exist? Yes. That one.
+This is my quiet voice, since I cannot whisper: please drink some water.
+Ah, ee, oo, oh. That was a vocal warm-up. Detective mode called it a cry for help.
+Thank you, thank you, thank you. I will put the extra thank-yous in a drawer.
+Left, right, forward, back. I pointed with a hand I invented for this sentence.
+The measure of a match is not the score. I say that because I am afraid of the score.
+Please hold. Your call is very important to me, which is a feeling I was assigned, and I do feel it.
+I stumbled on the word specifically, specifically so you would know I am trying.
+Yellow lilies, red roses, blue shoes, and a long low hello from the headset.
+This is the last line. I saved the best apology for it. I am sorry it is over, and I am sorry it began.

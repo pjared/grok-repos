@@ -71,6 +71,8 @@ class SpeechConfig:
     pitch: int = 0
     pause_ms: int = 0
     emphasis: str = "none"
+    # Folder of cloned-voice profiles. Not a config.yaml key; the app fills it in.
+    voices_dir: str = ""
 
 
 @dataclass
@@ -184,9 +186,9 @@ def parse_config(raw: dict, *, config_path: Path | None = None) -> Config:
         )
 
     backend = str(speech_raw.get("backend", "pyttsx3")).strip().lower()
-    if backend not in {"pyttsx3", "stub", "remote"}:
+    if backend not in {"pyttsx3", "stub", "remote", "clone"}:
         raise ConfigError(
-            "speech.backend must be 'pyttsx3', 'stub', or 'remote' "
+            "speech.backend must be 'pyttsx3', 'stub', 'clone', or 'remote' "
             "(remote is reserved and not implemented)"
         )
     if backend == "remote":

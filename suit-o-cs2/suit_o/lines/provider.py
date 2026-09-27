@@ -126,6 +126,25 @@ class YamlLineProvider(LineProvider):
         return self._rng.choice(choices)
 
 
+def stock_line_texts(path: Path) -> list[str]:
+    """Every stock line, plus the same line with default HUD words filled in.
+
+    The cloned-voice cache warms these so a match is not the first time the
+    model sees them. A line that mentions a real map name is still rendered
+    on demand and then cached.
+    """
+
+    texts: list[str] = []
+    seen: set[str] = set()
+    for pool in load_lines(path).values():
+        for line in pool:
+            for item in (line, _render(line, {})):
+                if item not in seen:
+                    seen.add(item)
+                    texts.append(item)
+    return texts
+
+
 def load_lines(path: Path) -> dict[str, list[str]]:
     if not path.is_file():
         raise FileNotFoundError(f"Lines file not found: {path}")

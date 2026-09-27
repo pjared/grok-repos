@@ -13,6 +13,7 @@ from tkinter import messagebox, ttk
 from suit_o.app import SuitOApp
 from suit_o.config import ConfigError
 from suit_o.preferences import clamp_volume
+from suit_o.voice.profile import is_clone_label, profile_name_from_label
 from suit_o.speech.tuning import (
     DEFAULT_PREVIEW_LINE,
     ENGINE_DEFAULT_VOICE,
@@ -52,7 +53,8 @@ class VoicePanel:
         parent.columnconfigure(1, weight=1)
         hint = (
             "Save applies the voice, rate, pitch, pause, and emphasis to every "
-            "in-game line. Preview speaks the text below with the sliders as they "
+            "in-game line. A voice built on the Voice Training tab shows up here "
+            "as Clone: name. Preview speaks the text below with the sliders as they "
             "are now, through the output device on the Listener tab, and does not "
             "change those saved settings. Volume is shared with the Listener tab."
         )
@@ -157,9 +159,11 @@ class VoicePanel:
     def show(self, tuning: VoiceTuning) -> None:
         """Paint ``tuning`` into the draft controls."""
 
-        names = self._voice_names
-        self.voice["values"] = voice_menu_labels(names, tuning.voice)
-        self.voice.set(selected_voice_label(tuning.voice, names))
+        self.reload_voices()
+        if tuning.voice == self.app.config.speech.voice:
+            self.voice.set(self.app.current_voice_label())
+        else:
+            self.voice.set(selected_voice_label(tuning.voice, self._voice_names))
         self.rate.set(tuning.rate)
         self.pitch.set(tuning.pitch)
         self.pause.set(tuning.pause_ms)
@@ -178,9 +182,15 @@ class VoicePanel:
 
     def reload_voices(self) -> None:
         self._voice_names = self.app.voice_names()
-        current = self._selected_voice()
-        self.voice["values"] = voice_menu_labels(self._voice_names, current)
-        self.voice.set(selected_voice_label(current, self._voice_names))
+        current = self.voice.get().strip() or self.app.current_voice_label()
+        labels = self.app.voice_picker_labels()
+        if current and current not in labels:
+            labels.append(current)
+        self.voice["values"] = labels
+        if current in labels:
+            self.voice.set(current)
+        else:
+            self.voice.set(self.app.current_voice_label())
 
     def draft(self) -> VoiceTuning:
         return VoiceTuning(
@@ -194,13 +204,17 @@ class VoicePanel:
 
     def preview(self) -> None:
         try:
-            self.app.preview_voice(self.preview_text.get("1.0", "end"), self.draft())
+            self.app.preview_voice(
+                self.preview_text.get("1.0", "end"),
+                self.draft(),
+                label=self.voice.get(),
+            )
         except (ConfigError, ValueError) as exc:
             messagebox.showerror("Suit-O", str(exc))
 
     def save(self) -> None:
         try:
-            applied = self.app.apply_tuning(self.draft())
+            applied = self.app.apply_saved_voice(self.draft(), self.voice.get())
             self.app.save_preferences()
         except (ConfigError, ValueError, OSError) as exc:
             messagebox.showerror("Suit-O", str(exc))
@@ -220,6 +234,8 @@ class VoicePanel:
         label = self.voice.get().strip()
         if not label or label == ENGINE_DEFAULT_VOICE:
             return ""
+        if is_clone_label(label):
+            return profile_name_from_label(label)
         return label
 
     def _on_rate(self, value: str) -> None:

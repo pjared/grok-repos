@@ -61,11 +61,13 @@ These steps assume Windows 10 or 11 and the default Steam library path. If CS2 i
    python -m suit_o.gui
    ```
 
-   `Start Suit-O GUI.bat` does the same thing with `pythonw`. The window has two tabs.
+   `Start Suit-O GUI.bat` does the same thing with `pythonw`. The window has three tabs.
 
    **Listener.** Shows whether the listener is up and how long it has been since CS2 last sent game state. Mute, volume, and the output device are saved back to `config.yaml`. Pick the playback device you actually want to hear. The list is Windows' speech outputs (SAPI), for example speakers, a headset earphone, a digital output, or a monitor. A headset often shows up twice — once for game audio and once for chat — and the Windows default is not always the one that makes a sound. Choose the endpoint, then press **Test voice**. Microphones are not listed, and Suit-O still refuses a microphone or virtual-cable name if one is typed into `speech.output_device`.
 
-   **Voice.** Fine-tune the voice used for every in-game line. The picker lists installed Windows SAPI voices (blank in the config, shown as "Engine default", keeps the engine's own voice). Sliders set speaking rate (words per minute), pitch (-10 to 10), volume (the same slider as on the Listener tab), and an optional pause before each line (milliseconds). Emphasis is None, Mild, or Strong. **Preview** speaks the text box through the output device selected on the Listener tab, including slider positions you have not saved yet. **Save** writes the settings and uses them for every in-game line. **Reset to defaults** puts back rate 185, pitch 0, volume 0.85, no pause, no emphasis, and the engine default voice, and saves that immediately. Closing the window saves the last saved tuning, not an unsaved draft. Volume is the exception: moving either volume slider saves it.
+   **Voice.** Fine-tune the voice used for every in-game line. The picker lists installed Windows SAPI voices (blank in the config, shown as "Engine default", keeps the engine's own voice) and any voice you built on the Voice Training tab (`Clone: name`). Sliders set speaking rate (words per minute), pitch (-10 to 10), volume (the same slider as on the Listener tab), and an optional pause before each line (milliseconds). Emphasis is None, Mild, or Strong. **Preview** speaks the text box through the output device selected on the Listener tab, including slider positions you have not saved yet. **Save** writes the settings and uses them for every in-game line. Saving a cloned voice sets `speech.backend` to `clone`. **Reset to defaults** puts back rate 185, pitch 0, volume 0.85, no pause, no emphasis, and the engine default voice, and saves that immediately. Closing the window saves the last saved tuning, not an unsaved draft. Volume is the exception: moving either volume slider saves it.
+
+   **Voice Training.** Record a short script in your own voice (or someone who agreed), then press **Build voice**. That stores a profile under `voices/` (gitignored) and adds it to the Voice tab. See [Voice cloning](#voice-cloning) below. The tab tells you if the optional packages are missing, and whether synthesis will use NVIDIA CUDA or the CPU.
 
 7. The console listener still works if you want a terminal instead of the window. Double-click `Start Suit-O.bat`, or:
 
@@ -77,14 +79,48 @@ These steps assume Windows 10 or 11 and the default Steam library path. If CS2 i
 
 Optional voice settings in `config.yaml`. These six are not tied to SAPI, so a future custom or cloned voice (a remote TTS server) can reuse the same panel and the same keys:
 
-- `speech.voice`: part of an installed voice name (`David`, `Zira`, ...). Blank keeps the engine default. These are the voices Windows already has. Suit-O does not clone a person's voice.
+- `speech.voice`: part of an installed voice name (`David`, `Zira`, ...), or the name of a cloned profile when `speech.backend` is `clone`. Blank keeps the engine default.
 - `speech.rate`: words per minute, 80 to 400 (default 185).
 - `speech.volume`: `0.0` to `1.0` (default `0.85`).
 - `speech.pitch`: integer from `-10` to `10` (default `0`, the voice's own pitch). pyttsx3 cannot set SAPI pitch on its own, so Suit-O wraps each affected line in SAPI XML such as `<pitch absmiddle="2">`. Plain lines stay plain text.
 - `speech.pause_ms`: milliseconds of silence before a line, `0` to `1000` (default `0`). Spoken with SAPI `<silence msec="..."/>` when it is not zero.
 - `speech.emphasis`: `none`, `mild`, or `strong` (default `none`). Mild and strong use SAPI `<emph>`. Strong also raises pitch by 3 for that line only, still inside `-10` to `10`.
 
-`speech.backend: remote` is still refused at startup. The fields above are already the contract that backend would read.
+`speech.backend` may be `pyttsx3`, `clone`, or `stub`. `remote` is still refused at startup. Rate, volume, pause, pitch, and emphasis are the same fields for every backend. Chatterbox has no pitch or words-per-minute control, so the clone backend applies pitch and rate to the waveform after synthesis and maps emphasis onto Chatterbox's exaggeration control. Volume is applied when the WAV is played, on the output device from the Listener tab.
+
+## Voice cloning
+
+Stock Windows voices still sound like a default SAPI voice. Voice Training is a recorder plus a zero-shot clone, not a long training run.
+
+The model is [Chatterbox](https://github.com/resemble-ai/chatterbox) by Resemble AI (`pip` package `chatterbox-tts`). It is published under the **MIT license**, so personal local use is allowed. You still have to record **your own voice, or someone who agreed to it**. Do not feed it ripped game audio or an actor's performance.
+
+Chatterbox clones from a reference clip. The script in `voice_script.txt` is about one to three minutes of original Suit-O lines (vowels, consonants, numbers, questions) so the recording covers a wide set of sounds. The profile keeps the full recording. The model itself is prompted with a clean excerpt of up to 30 seconds, which is the length this model is built for. Edit `voice_script.txt` in any text editor and press **Reload script** before you record.
+
+On the Voice Training tab: pick the **microphone** (input devices are allowed here), read the line, then **Record / Stop / Play back / Re-record**. The level meter moves while you record. Playback goes to the output device chosen on the Listener tab. That output still cannot be a microphone or a virtual cable. **Build voice** writes `voices/<name>/` with `profile.yaml`, `reference.wav`, and `prompt.wav`. You need about a minute of audio and a take for every script line.
+
+Install the optional stack only if you want this. The base app stays on PyYAML and pyttsx3.
+
+```powershell
+python -m pip install -r requirements-voice.txt
+```
+
+NVIDIA GPU (faster; the tab shows the CUDA device name when it is visible):
+
+```powershell
+python -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu124
+python -m pip install -r requirements-voice.txt
+```
+
+If there is no NVIDIA GPU, the same requirements file runs on CPU. The tab says which one it is using.
+
+Rough size, so you can plan disk space before installing:
+
+- Disk: about 8 GB free. The Python packages are several GB, and the first synthesis downloads about 2 GB of Chatterbox weights into the Hugging Face cache.
+- VRAM: about 4–6 GB for the English Chatterbox model when CUDA is available. CPU mode does not need VRAM; it uses system RAM and is slower, which is fine because stock lines are cached.
+
+After you save the cloned voice, Suit-O speaks it through the `clone` backend on the same speech thread as everything else (not the GUI thread). The first time a line is spoken it is synthesized and stored under `voices/<name>/cache/`. Saving the voice also starts caching the stock lines from `lines/lines.yaml` in the background, and a live line cuts ahead of that cache. Later lines with the same text, rate, pitch, pause, and emphasis play the WAV. Preview on the Voice tab uses the clone for that one line even before you save it, without switching in-game lines until **Save**.
+
+`voices/` is gitignored. Nothing you record is committed.
 
 ## Mute
 
@@ -137,7 +173,7 @@ A broke freeze (under rifle-plus-helmet money: 4100 on CT, 3700 on T) uses the l
 
 **You hear nothing, but the log shows lines.** Check mute, the volume slider, and the output device. Press **Test voice** after choosing a playback device. On the Voice tab, **Preview** speaks the text box on that same device. A wireless headset can expose two outputs (game and chat) plus a microphone; pick a playback name, not the microphone. The Windows default is sometimes a different endpoint than the one you are wearing.
 
-**It does not sound like Suit-O yet.** Open the Voice tab, try a different installed voice, and move rate and pitch. Press **Preview** before **Save**. Reset to defaults puts the stock knobs back and saves them. Pitch, pause, and emphasis are applied to each line; they are not a separate Windows voice.
+**It does not sound like Suit-O yet.** Open Voice Training, record the script in your own voice, and press **Build voice**. Then on the Voice tab pick `Clone: Suit-O` and press **Preview**. Rate, pitch, pause, and emphasis still apply. If the Voice Training tab says the optional packages are missing, install them with `python -m pip install -r requirements-voice.txt` and start the window again.
 
 **The desktop window opens and closes immediately.** Read `suit-o.log` in this folder. `pythonw` has no console, so startup errors are written there. A missing virtual environment is reported by the launcher itself.
 

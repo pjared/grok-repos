@@ -7,7 +7,8 @@ server:
   token: suito-local-change-me
 
 speech:
-  # pyttsx3 (Windows SAPI), stub (tests / simulator), or remote (not implemented).
+  # pyttsx3 (Windows SAPI), stub (tests / simulator), clone (local Chatterbox
+  # voice built on the Voice Training tab), or remote (not implemented).
   backend: pyttsx3
   # Substring of an installed voice name. Blank uses the engine default.
   # A future remote or cloned voice can use this same name.

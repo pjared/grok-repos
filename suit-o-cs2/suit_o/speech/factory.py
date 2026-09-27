@@ -20,4 +20,8 @@ def create_backend(settings: SpeechConfig) -> SpeechBackend:
         from suit_o.speech.remote import RemoteTtsBackend
 
         return RemoteTtsBackend(settings)
+    if kind == "clone":
+        from suit_o.speech.clone_backend import CloneSpeechBackend
+
+        return CloneSpeechBackend(settings)
     raise ConfigError(f"Unknown speech backend {kind!r}")

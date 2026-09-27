@@ -46,6 +46,7 @@ def save_user_settings(
     pitch: int | None = None,
     pause_ms: int | None = None,
     emphasis: str | None = None,
+    backend: str | None = None,
 ) -> None:
     """Update the passed settings in ``path``. Omitted arguments are left alone.
 
@@ -65,6 +66,7 @@ def save_user_settings(
             pitch,
             pause_ms,
             emphasis,
+            backend,
         )
     ):
         return
@@ -76,6 +78,7 @@ def save_user_settings(
     rendered_pitch: str | None = None
     rendered_pause: str | None = None
     rendered_emphasis: str | None = None
+    rendered_backend: str | None = None
     if volume is not None:
         rendered_volume = format_volume(clamp_volume(volume))
     if output_device is not None:
@@ -89,6 +92,11 @@ def save_user_settings(
         rendered_device = json.dumps(cleaned)
     if muted is not None:
         rendered_mute = "true" if muted else "false"
+    if backend is not None:
+        cleaned_backend = backend.strip().lower()
+        if cleaned_backend not in {"pyttsx3", "stub", "clone"}:
+            raise ConfigError("speech.backend must be 'pyttsx3', 'stub', or 'clone'")
+        rendered_backend = cleaned_backend
     if any(value is not None for value in (voice, rate, pitch, pause_ms, emphasis)):
         (
             rendered_voice,
@@ -112,6 +120,8 @@ def save_user_settings(
         text = _replace_yaml_scalar(text, "volume", rendered_volume, parent="speech")
     if rendered_device is not None:
         text = _replace_yaml_scalar(text, "output_device", rendered_device, parent="speech")
+    if rendered_backend is not None:
+        text = _replace_yaml_scalar(text, "backend", rendered_backend, parent="speech")
     if rendered_voice is not None:
         text = _replace_yaml_scalar(text, "voice", rendered_voice, parent="speech")
     if rendered_rate is not None:

@@ -24,6 +24,7 @@ from suit_o.gui.status import (
     selected_device_label,
     tone_color,
 )
+from suit_o.gui.training import TrainingPanel
 from suit_o.gui.voice import VoicePanel
 from suit_o.preferences import clamp_volume
 from suit_o.speech.devices import WINDOWS_DEFAULT_LABEL
@@ -45,8 +46,8 @@ class SuitOWindow:
 
         self.root = tk.Tk()
         self.root.title("Suit-O")
-        self.root.geometry("700x680")
-        self.root.minsize(560, 520)
+        self.root.geometry("760x760")
+        self.root.minsize(640, 640)
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
 
@@ -64,8 +65,10 @@ class SuitOWindow:
         self.notebook.grid(row=2, column=0, sticky="nsew")
         listener = ttk.Frame(self.notebook, padding=(8, 8, 8, 8))
         voice = ttk.Frame(self.notebook, padding=(8, 8, 8, 8))
+        training = ttk.Frame(self.notebook, padding=(8, 8, 8, 8))
         self.notebook.add(listener, text="Listener")
         self.notebook.add(voice, text="Voice")
+        self.notebook.add(training, text="Voice Training")
         self._build_listener(listener)
 
         self.volume = tk.DoubleVar(value=round(app.config.speech.volume * 100))
@@ -80,8 +83,22 @@ class SuitOWindow:
             hold_updates=self._hold_volume,
             paint_volume=self._paint_volume_caption,
         )
+        self.training_panel = TrainingPanel(
+            training,
+            app,
+            on_profile_built=self._on_profile_built,
+            schedule=lambda callback: self.root.after(0, callback),
+        )
         self._paint_volume_caption(app.config.speech.volume)
         self._ui_ready = True
+
+    def _on_profile_built(self, name: str) -> None:
+        self.voice_panel.reload_voices()
+        self._record_profile(name)
+
+    def _record_profile(self, name: str) -> None:
+        self.app.note(f"Cloned voice saved: {name}")
+        self._paint(self.app.snapshot())
 
     def _build_listener(self, frame: ttk.Frame) -> None:
         frame.columnconfigure(1, weight=1)

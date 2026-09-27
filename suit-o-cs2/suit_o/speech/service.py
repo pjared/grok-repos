@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 _MAX_PENDING = 8
 _NO_DEVICE = object()
 _NO_TUNING = object()
+_NO_BACKEND = object()
 
 
 @dataclass
@@ -29,6 +30,7 @@ class _Job:
     utterance: Utterance
     bypass_mute: bool = False
     tuning: VoiceTuning | None = None
+    backend: SpeechBackend | None = None
 
 
 class SpeechService:
@@ -44,6 +46,8 @@ class SpeechService:
         self._queued_volume: float | None = None
         self._queued_device: object = _NO_DEVICE
         self._queued_tuning: object = _NO_TUNING
+        self._queued_backend: object = _NO_BACKEND
+        self._current_speaker: SpeechBackend | None = None
         self._applying = False
         self._cv = threading.Condition()
         self._thread = threading.Thread(target=self._loop, name="suit-o-speech", daemon=True)
@@ -61,12 +65,13 @@ class SpeechService:
         *,
         bypass_mute: bool = False,
         tuning: VoiceTuning | None = None,
+        backend: SpeechBackend | None = None,
     ) -> None:
         with self._cv:
             if self._stop or (self._muted and not bypass_mute):
                 return
             override = None if tuning is None else normalize_tuning(tuning)
-            self._pending.append(_Job(utterance, bypass_mute, override))
+            self._pending.append(_Job(utterance, bypass_mute, override, backend))
             self._pending.sort(key=lambda item: -item.utterance.priority)
             if len(self._pending) > _MAX_PENDING:
                 dropped = self._pending[_MAX_PENDING :]
@@ -141,6 +146,36 @@ class SpeechService:
             tuning=tuning,
         )
 
+    def preview_with(self, text: str, tuning: VoiceTuning | None, backend: SpeechBackend) -> None:
+        """Speak one line through ``backend`` without making it the default.
+
+        Used so a Voice-tab preview of an unsaved cloned voice does not switch
+        in-game lines until the user saves.
+        """
+
+        cleaned = text.strip()
+        if not cleaned:
+            raise ValueError("Preview needs a line to speak")
+        self.submit(
+            Utterance(event_type="preview", text=cleaned, priority=100),
+            bypass_mute=True,
+            tuning=tuning,
+            backend=backend,
+        )
+
+    def set_backend(self, backend: SpeechBackend) -> None:
+        """Swap the speech backend on the speech thread, between lines."""
+
+        with self._cv:
+            replaced = self._queued_backend
+            self._queued_backend = backend
+            self._cv.notify()
+        if replaced is not _NO_BACKEND:
+            try:
+                replaced.close()  # type: ignore[attr-defined]
+            except Exception:
+                logger.exception("Could not close a replaced speech backend")
+
     def set_muted(self, muted: bool) -> None:
         with self._cv:
             self._muted = muted
@@ -178,8 +213,21 @@ class SpeechService:
         with self._cv:
             self._stop = True
             self._pending.clear()
+            queued = self._queued_backend
+            self._queued_backend = _NO_BACKEND
+            speaker = self._current_speaker
             self._cv.notify_all()
+        if queued is not _NO_BACKEND:
+            try:
+                queued.close()  # type: ignore[attr-defined]
+            except Exception:
+                logger.exception("Could not close a queued speech backend")
         self.backend.stop()
+        if speaker is not None and speaker is not self.backend:
+            try:
+                speaker.stop()
+            except Exception:
+                logger.exception("Could not stop the active speech backend")
         if self._started:
             self._thread.join(timeout=2)
         self.backend.close()
@@ -189,6 +237,7 @@ class SpeechService:
             self._queued_volume is not None
             or self._queued_device is not _NO_DEVICE
             or self._queued_tuning is not _NO_TUNING
+            or self._queued_backend is not _NO_BACKEND
         )
 
     def _loop(self) -> None:
@@ -201,11 +250,16 @@ class SpeechService:
                 volume = self._queued_volume
                 device = self._queued_device
                 tuning = self._queued_tuning
+                backend = self._queued_backend
                 self._queued_volume = None
                 self._queued_device = _NO_DEVICE
                 self._queued_tuning = _NO_TUNING
+                self._queued_backend = _NO_BACKEND
                 self._applying = (
-                    volume is not None or device is not _NO_DEVICE or tuning is not _NO_TUNING
+                    volume is not None
+                    or device is not _NO_DEVICE
+                    or tuning is not _NO_TUNING
+                    or backend is not _NO_BACKEND
                 )
                 job: _Job | None = None
                 if self._pending:
@@ -216,7 +270,7 @@ class SpeechService:
                         self._current = job.utterance
                         self._current_bypass = job.bypass_mute
             try:
-                self._apply_controls(volume, device, tuning)
+                self._apply_controls(volume, device, tuning, backend)
             finally:
                 with self._cv:
                     self._applying = False
@@ -224,11 +278,14 @@ class SpeechService:
             if job is None:
                 continue
             completed = False
+            speaker = job.backend or self.backend
+            with self._cv:
+                self._current_speaker = speaker
             try:
                 if job.tuning is None:
-                    completed = bool(self.backend.speak(job.utterance.text))
+                    completed = bool(speaker.speak(job.utterance.text))
                 else:
-                    completed = bool(self.backend.speak(job.utterance.text, tuning=job.tuning))
+                    completed = bool(speaker.speak(job.utterance.text, tuning=job.tuning))
             except Exception:
                 logger.exception("Speech backend failed")
             with self._cv:
@@ -236,9 +293,23 @@ class SpeechService:
                     self.history.append(job.utterance)
                 self._current = None
                 self._current_bypass = False
+                self._current_speaker = None
                 self._cv.notify_all()
 
-    def _apply_controls(self, volume: float | None, device: object, tuning: object) -> None:
+    def _apply_controls(
+        self,
+        volume: float | None,
+        device: object,
+        tuning: object,
+        backend: object,
+    ) -> None:
+        if backend is not _NO_BACKEND and backend is not self.backend:
+            old = self.backend
+            self.backend = backend  # type: ignore[assignment]
+            try:
+                old.close()
+            except Exception:
+                logger.exception("Could not close the previous speech backend")
         if device is not _NO_DEVICE:
             try:
                 self.backend.set_output_device(str(device))
