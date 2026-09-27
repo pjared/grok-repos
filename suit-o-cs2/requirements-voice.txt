@@ -2,12 +2,15 @@
 # Chatterbox (Resemble AI) is MIT-licensed and clones a voice from a reference clip.
 # sounddevice records the microphone and plays the result on a chosen output device.
 #
-# CPU only:
+# CPU, including an AMD GPU when Chatterbox cannot use it:
 #   python -m pip install -r requirements-voice.txt
 #
 # NVIDIA CUDA (install a CUDA torch build first, then this file):
 #   python -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu124
 #   python -m pip install -r requirements-voice.txt
+#
+# AMD ROCm on Linux: install the current PyTorch ROCm build, then this file.
+# The Voice Training tab says which stack is in use. It does not name the card.
 
 chatterbox-tts>=0.1.0
 sounddevice>=0.5.1

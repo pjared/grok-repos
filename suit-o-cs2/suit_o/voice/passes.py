@@ -159,8 +159,10 @@ def _separate_with_demucs(samples: list[float], sample_rate: int) -> list[float]
     target = int(getattr(model, "samplerate", sample_rate))
     if sample_rate != target:
         wav = _resample_tensor(wav, sample_rate, target)
+    from suit_o.voice.runtime import torch_inference_device
+
     with torch.no_grad():
-        sources = apply_model(model, wav, device="cpu")
+        sources = apply_model(model, wav, device=torch_inference_device(torch))
     names = list(getattr(model, "sources", []))
     index = names.index("vocals") if "vocals" in names else 0
     vocals = sources[0, index].mean(dim=0)

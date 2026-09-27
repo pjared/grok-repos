@@ -46,8 +46,8 @@ def release_model() -> None:
 def synthesize(text: str, prompt_wav: Path, emphasis: str = "none") -> tuple[list[float], int]:
     """Clone ``prompt_wav`` and speak ``text``. Returns float samples and the rate.
 
-    The model is loaded on the first call. CUDA is used when
-    ``torch.cuda.is_available()``; otherwise the same call runs on CPU.
+    The model is loaded on the first call. NVIDIA CUDA and AMD ROCm use the
+    CUDA device string. DirectML and every other machine use the CPU.
     Call :func:`release_model` after a render batch or a preview so a match
     does not keep using the GPU.
     """

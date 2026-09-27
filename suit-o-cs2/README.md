@@ -65,7 +65,7 @@ These steps assume Windows 10 or 11 and the default Steam library path. If CS2 i
 
    **Voice.** Fine-tune the voice used for every in-game line. The picker lists installed Windows SAPI voices (blank in the config, shown as "Engine default", keeps the engine's own voice) and any voice you built on the Voice Training tab (`Clone: name`). Sliders set speaking rate (words per minute), pitch (-10 to 10), volume (the same slider as on the Listener tab), and an optional pause before each line (milliseconds). Emphasis is None, Mild, or Strong. **Preview** speaks the text box through the output device selected on the Listener tab, including slider positions you have not saved yet. **Save** writes the settings to `config.local.yaml` and uses them for every in-game line. Saving a cloned voice sets `speech.backend` to `clone`. **Reset to defaults** puts back rate 185, pitch 0, volume 0.85, no pause, no emphasis, and the engine default voice, and saves that immediately. Closing the window saves the last saved tuning, not an unsaved draft. Volume is the exception: moving either volume slider saves it.
 
-   **Voice Training.** Record a short script in your own voice (or someone who agreed), then press **Build voice**. That stores a profile under `voices/` (gitignored) and adds it to the Voice tab. See [Voice cloning](#voice-cloning) below. The tab tells you if the optional packages are missing, and whether synthesis will use NVIDIA CUDA or the CPU.
+   **Voice Training.** Record a short script in your own voice (or someone who agreed), then press **Build voice**. That stores a profile under `voices/` (gitignored) and adds it to the Voice tab. See [Voice cloning](#voice-cloning) below. The tab tells you if the optional packages are missing, and whether synthesis will use NVIDIA CUDA, AMD ROCm, or the CPU. It does not name the graphics card.
 
    **Lineups.** Import your own screenshots or a lineup pack and show them in a small overlay while you hold a grenade. See [Lineups](#lineups) below.
 
@@ -112,19 +112,23 @@ Install the optional stack only if you want this. The base app stays on PyYAML, 
 python -m pip install -r requirements-voice.txt
 ```
 
-NVIDIA GPU (faster; the tab shows the CUDA device name when it is visible):
+That CPU install is the right one for an AMD GPU on Windows. Chatterbox pre-renders on the CPU there. Matches only play the saved files, so the slower render does not happen during a round. If DirectML (`torch-directml`) is installed, the tab says so and still uses the CPU, because this voice model does not run on DirectML.
+
+NVIDIA CUDA (faster; install that torch build first):
 
 ```powershell
 python -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu124
 python -m pip install -r requirements-voice.txt
 ```
 
-If there is no NVIDIA GPU, the same requirements file runs on CPU. The tab says which one it is using.
+AMD ROCm is the Linux path. Install the current PyTorch ROCm build, then `requirements-voice.txt`. Suit-O treats ROCm as the CUDA API and the tab says AMD ROCm. The tab never shows the graphics-card model.
+
+The tab says which of those is in use: NVIDIA CUDA, AMD ROCm, or CPU.
 
 Rough size, so you can plan disk space before installing:
 
 - Disk: about 8 GB free. The Python packages are several GB, and the first synthesis downloads about 2 GB of Chatterbox weights into the Hugging Face cache.
-- VRAM: about 4–6 GB for the English Chatterbox model while it is pre-rendering or previewing, when CUDA is available. Matches do not use the GPU. CPU mode does not need VRAM; it uses system RAM and is slower, which only matters while the stock lines are being rendered.
+- VRAM: about 4–6 GB for the English Chatterbox model while it is pre-rendering or previewing, when NVIDIA CUDA or AMD ROCm is in use. Matches do not use the GPU. CPU mode does not need VRAM; it uses system RAM and is slower, which only matters while the stock lines are being rendered.
 
 After you build or save the cloned voice, Suit-O speaks it through the `clone` backend on the same speech thread as everything else (not the GUI thread). That thread only reads the pre-rendered WAV. Preview uses the clone for one line even before you save it, without switching in-game lines until **Save**.
 
@@ -223,6 +227,8 @@ Pushes to `main` run that pytest job on `windows-latest` (`.github/workflows/sui
 ## Remote speech later
 
 `speech.backend: remote` is reserved for an HTTP TTS server on a machine on your home network. Selecting it stops startup with an error. v1 contains no client for that server. When it exists, it should honor `speech.voice`, `speech.rate`, `speech.volume`, `speech.pitch`, `speech.pause_ms`, and `speech.emphasis`, and playback still has to be a local headset or speakers, still not voice chat.
+
+A remote voice and chat backend on a separate machine on the home network is worth building after the features already queued. That machine would run the voice model and the chat model. This PC would still play the audio locally.
 
 ## Troubleshooting
 

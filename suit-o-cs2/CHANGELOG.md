@@ -10,6 +10,10 @@ New notes go under `## [Unreleased]`. Every push to `main` updates this file in 
 
 ## [Unreleased]
 
+### Changed
+
+- Voice synthesis uses NVIDIA CUDA or AMD ROCm when that PyTorch build is available, and the CPU otherwise. DirectML is detected and left unused, because Chatterbox does not run on it. The tab names the stack and not the graphics card.
+
 ### Added
 
 - Lineup photos can be JPEG or WebP as well as PNG. Pillow is part of the base install. (`747417c`)
