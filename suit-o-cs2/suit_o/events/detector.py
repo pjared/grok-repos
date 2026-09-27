@@ -1,8 +1,10 @@
 """Detect match events by diffing successive own-player snapshots.
 
-The first gameplay snapshot is a baseline and emits nothing. Later snapshots
-emit an event only on a transition. Stats from a spectated player (a steamid
-that does not match provider.steamid) never update the local player's memory.
+The first gameplay snapshot is a baseline and emits nothing. A first snapshot
+that is already the main menu is the exception: that is CS2 launching into
+the menu, and it emits the Premier greeting once. Later snapshots emit an
+event only on a transition. Stats from a spectated player (a steamid that
+does not match provider.steamid) never update the local player's memory.
 """
 
 from __future__ import annotations
@@ -34,6 +36,8 @@ class EventDetector:
         if not self._seen:
             self._remember(snap)
             self._seen = True
+            if snap.own is not None and _is_menu(snap.own.activity):
+                return [self._event(EventType.MENU_GREETING, snap.own)]
             return []
 
         events: list[DetectedEvent] = []
@@ -56,8 +60,9 @@ class EventDetector:
 
         if snap.own is not None:
             merged = _merge_own(self._own, snap.own)
-            if merged.activity == "menu" and self._activity != "menu":
+            if _is_menu(merged.activity) and not _is_menu(self._activity):
                 events.append(self._event(EventType.IDLE, merged))
+                events.append(self._event(EventType.MENU_GREETING, merged))
             events.extend(self._combat_events(self._own, merged, round_changed))
             self._own = merged
             self._activity = merged.activity
@@ -203,6 +208,10 @@ class EventDetector:
     def _event(self, kind: EventType, own: OwnPlayer | None = None) -> DetectedEvent:
         source = own if own is not None else self._own
         return DetectedEvent(type=kind, context=_context(self._map_name, source))
+
+
+def _is_menu(activity: str | None) -> bool:
+    return (activity or "").strip().lower() == "menu"
 
 
 def _merge_own(previous: OwnPlayer | None, incoming: OwnPlayer) -> OwnPlayer:

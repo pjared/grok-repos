@@ -59,7 +59,8 @@ def test_first_snapshot_is_baseline():
 
 def test_warmup_idle_match_boundaries():
     detector = EventDetector(thresholds())
-    assert feed(detector, make_payload(activity="menu", include_map=False)) == []
+    first_menu = feed(detector, make_payload(activity="menu", include_map=False))
+    assert types_of(first_menu) == [EventType.MENU_GREETING]
     idle_again = feed(detector, make_payload(activity="menu", include_map=False))
     assert idle_again == []
 
@@ -71,7 +72,7 @@ def test_warmup_idle_match_boundaries():
     assert types_of(started) == [EventType.MATCH_START]
 
     menu = feed(detector, make_payload(activity="menu", include_map=False, include_round=False))
-    assert types_of(menu) == [EventType.IDLE]
+    assert types_of(menu) == [EventType.IDLE, EventType.MENU_GREETING]
     assert feed(detector, make_payload(activity="menu", include_map=False, include_round=False)) == []
 
 

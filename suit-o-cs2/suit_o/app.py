@@ -22,7 +22,7 @@ from suit_o.gsi.server import GsiServer
 from suit_o.lines.provider import LineProvider, YamlLineProvider
 from suit_o.local_config import store_personal_settings
 from suit_o.reload import restart_is_blocked
-from suit_o.models import GameEvent, Utterance
+from suit_o.models import EventType, GameEvent, Utterance
 from suit_o.lineups.deck import DeckView, LineupDeck
 from suit_o.preferences import clamp_volume
 from suit_o.speech.backend import SpeechBackend
@@ -678,6 +678,15 @@ class SuitOApp:
         )
         self._after_settings_saved()
 
+    def save_menu_greeting(self, enabled: bool) -> None:
+        """Remember whether the main menu asks about queueing Premier."""
+
+        if self.config_path is None:
+            raise RuntimeError("Suit-O has no config file to update")
+        store_personal_settings(self.config_path, menu_greeting=bool(enabled))
+        self.config.menu_greeting = bool(enabled)
+        self._after_settings_saved()
+
     def save_update_preference(self, check_on_launch: bool) -> None:
         """Remember whether the window should ``git pull`` when it opens."""
 
@@ -879,6 +888,9 @@ class SuitOApp:
         ]
         events.sort(key=lambda event: -event.priority)
         for event in events:
+            if event.type == EventType.MENU_GREETING and not self.config.menu_greeting:
+                self._log_speech(event.type.value, "", "disabled")
+                continue
             decision = self.lines.decide(event, now)
             if decision.status == "spoken" and decision.text:
                 self._log_speech(event.type.value, decision.text, "spoken")

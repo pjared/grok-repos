@@ -34,6 +34,11 @@ speech:
 
 mute: false
 
+# Ask about queueing Premier when CS2 is in the main menu, including the
+# first connect and a return from a match. Once per visit, and not again
+# for 10 minutes. The Listener tab can turn this off.
+menu_greeting: true
+
 cooldowns:
   default_seconds: 6
   per_event:
@@ -42,6 +47,7 @@ cooldowns:
     low_health: 15
     warmup: 90
     idle: 120
+    menu_greeting: 600
     round_freezetime: 1
     buy_low_money: 20
 
@@ -72,6 +78,7 @@ priority:
   buy_low_money: 32
   round_freezetime: 24
   warmup: 14
+  menu_greeting: 12
   idle: 10
 
 thresholds:

@@ -110,6 +110,7 @@ def store_personal_settings(
     hotkey_toggle: str | None = None,
     smokes_only: bool | None = None,
     check_on_launch: bool | None = None,
+    menu_greeting: bool | None = None,
     voice_key: str = "",
     ptt_key: str = "",
 ) -> None:
@@ -148,16 +149,18 @@ def store_personal_settings(
         _validate_lineups(config_path, lineup_args, voice_key=voice_key, ptt_key=ptt_key)
     if check_on_launch is not None and not isinstance(check_on_launch, bool):
         raise ConfigError("updates.check_on_launch must be true or false")
+    if menu_greeting is not None and not isinstance(menu_greeting, bool):
+        raise ConfigError("menu_greeting must be true or false")
 
     base = read_yaml_mapping(config_path)
     local_path = local_config_path(config_path)
     overlay = _read_local(local_path)
-    _apply_managed(
-        overlay,
-        base,
-        None,
-        {"mute": muted} if muted is not None else {},
-    )
+    top_level = {}
+    if muted is not None:
+        top_level["mute"] = muted
+    if menu_greeting is not None:
+        top_level["menu_greeting"] = menu_greeting
+    _apply_managed(overlay, base, None, top_level)
     _apply_managed(
         overlay,
         base,
@@ -318,7 +321,7 @@ def _apply_managed(overlay: dict, base: dict, section: str | None, values: dict)
     if section is None:
         target = overlay
         base_section = base
-        defaults = {"mute": False}
+        defaults = {"mute": False, "menu_greeting": True}
     else:
         current = overlay.get(section)
         target = current if isinstance(current, dict) else {}
@@ -369,7 +372,7 @@ def _same(key: str, current: object, default: object) -> bool:
 
 
 def _coerce(key: str, value: object) -> object:
-    if key in {"mute", "enabled", "check_on_launch", "smokes_only"}:
+    if key in {"mute", "enabled", "check_on_launch", "smokes_only", "menu_greeting"}:
         if isinstance(value, bool):
             return value
         raise ConfigError(f"{key} must be true or false")

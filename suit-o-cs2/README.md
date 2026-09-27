@@ -147,9 +147,12 @@ The simulator posts a synthetic match at the local server and uses an in-memory 
 
 ```powershell
 python -m suit_o.simulate
+python -m suit_o.simulate --menu
 ```
 
-It exits with an error if any event fails to produce a line. A normal run ends with `All 19 events produced a line.`
+It exits with an error if any event fails to produce a line. A normal run ends with `All 20 events produced a line.` `--menu` posts only the main menu, twice: the greeting should be spoken once and the second heartbeat should stay quiet. Nothing is played out loud either way.
+
+With CS2 itself, launch into the main menu (or return there after a match). Suit-O asks if you are ready to queue Premier. That is once per visit, and not again for 10 minutes. **Greet me in the main menu** on the Listener tab turns it off. The choice is saved in `config.local.yaml`. `menu_greeting: false` in that file does the same thing.
 
 Unit tests (from this folder, with the dev requirements installed):
 

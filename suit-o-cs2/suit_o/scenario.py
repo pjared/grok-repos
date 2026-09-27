@@ -13,6 +13,28 @@ from suit_o.gsi.payloads import LOCAL_STEAM_ID, heartbeat, make_payload
 BOMB_POSITION_SENTINEL = "9999, 8888, 7777"
 
 
+def build_menu_scenario(token: str, steamid: str = LOCAL_STEAM_ID) -> list[dict]:
+    """CS2 already sitting in the main menu. No match is invented.
+
+    The first post is the launch snapshot and should greet once. The second
+    is another menu heartbeat and should stay quiet.
+    """
+
+    common = {
+        "token": token,
+        "steamid": steamid,
+        "include_map": False,
+        "include_round": False,
+        "activity": "menu",
+        "health": 100,
+        "money": 0,
+    }
+    return [
+        make_payload(**common, timestamp=1),
+        make_payload(**common, timestamp=2),
+    ]
+
+
 def build_scenario(token: str, steamid: str = LOCAL_STEAM_ID) -> list[dict]:
     common = {"token": token, "steamid": steamid}
     steps: list[dict] = [heartbeat(token, steamid)]

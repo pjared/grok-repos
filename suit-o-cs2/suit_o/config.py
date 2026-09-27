@@ -133,6 +133,7 @@ class Config:
     lineups: LineupConfig
     lines_path: Path
     updates: UpdateConfig = field(default_factory=UpdateConfig)
+    menu_greeting: bool = True
     warnings: list[str] = field(default_factory=list)
 
     def priority_for(self, event_type: EventType) -> int:
@@ -298,6 +299,9 @@ def parse_config(raw: dict, *, config_path: Path | None = None) -> Config:
         )
 
     mute = bool(raw.get("mute", False))
+    menu_greeting = raw.get("menu_greeting", True)
+    if not isinstance(menu_greeting, bool):
+        raise ConfigError("menu_greeting must be true or false")
 
     default_cooldown = _as_float(
         cooldown_raw.get("default_seconds", 6), "cooldowns.default_seconds"
@@ -424,6 +428,7 @@ def parse_config(raw: dict, *, config_path: Path | None = None) -> Config:
         lineups=lineups,
         lines_path=lines_path,
         updates=UpdateConfig(check_on_launch=check_on_launch),
+        menu_greeting=menu_greeting,
         warnings=warnings,
     )
 

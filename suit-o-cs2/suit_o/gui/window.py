@@ -194,15 +194,22 @@ class SuitOWindow:
         self.update_button.grid(row=0, column=2, sticky="w", padx=(8, 0))
         self.update_status = ttk.Label(buttons, text="")
         self.update_status.grid(row=0, column=3, sticky="w", padx=(8, 0))
+        self.menu_greeting = tk.BooleanVar(value=self.app.config.menu_greeting)
+        ttk.Checkbutton(
+            buttons,
+            text="Greet me in the main menu",
+            variable=self.menu_greeting,
+            command=self._save_menu_greeting,
+        ).grid(row=1, column=0, columnspan=4, sticky="w", pady=(8, 0))
         self.check_updates = tk.BooleanVar(value=self.app.config.updates.check_on_launch)
         ttk.Checkbutton(
             buttons,
             text="Check for updates when Suit-O opens",
             variable=self.check_updates,
             command=self._save_update_pref,
-        ).grid(row=1, column=0, columnspan=4, sticky="w", pady=(8, 0))
+        ).grid(row=2, column=0, columnspan=4, sticky="w", pady=(4, 0))
         log_tools = ttk.Frame(buttons)
-        log_tools.grid(row=2, column=0, columnspan=4, sticky="ew", pady=(10, 4))
+        log_tools.grid(row=3, column=0, columnspan=4, sticky="ew", pady=(10, 4))
         ttk.Label(log_tools, text="Recent events").pack(side="left")
         ttk.Button(log_tools, text="Copy", command=self._copy_log).pack(side="right")
 
@@ -397,6 +404,7 @@ class SuitOWindow:
         self.lineups_panel.reload()
         self._bind_lineup_hotkeys()
         self.check_updates.set(self.app.config.updates.check_on_launch)
+        self.menu_greeting.set(self.app.config.menu_greeting)
         self._show_notice("Reloaded")
 
     def _restore_restart_state(self) -> None:
@@ -477,6 +485,12 @@ class SuitOWindow:
             self.notice.configure(text="Update pending")
             return
         self.notice.configure(text="")
+
+    def _save_menu_greeting(self) -> None:
+        try:
+            self.app.save_menu_greeting(bool(self.menu_greeting.get()))
+        except Exception as exc:
+            messagebox.showerror("Suit-O", str(exc))
 
     def _save_update_pref(self) -> None:
         try:

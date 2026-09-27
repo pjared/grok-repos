@@ -18,7 +18,7 @@ from pathlib import Path
 from suit_o.app import SuitOApp
 from suit_o.config import DEFAULT_CONFIG_PATH, Config, ConfigError, load_config
 from suit_o.models import EventType
-from suit_o.scenario import BOMB_POSITION_SENTINEL, build_scenario
+from suit_o.scenario import BOMB_POSITION_SENTINEL, build_menu_scenario, build_scenario
 from suit_o.speech.stub import StubSpeechBackend
 
 logger = logging.getLogger(__name__)
@@ -48,7 +48,12 @@ def post_payload(url: str, payload: dict, timeout: float = 2.0) -> int:
         return int(response.status)
 
 
-def run_simulation(config: Config, *, backend: StubSpeechBackend | None = None) -> list[str]:
+def run_simulation(
+    config: Config,
+    *,
+    backend: StubSpeechBackend | None = None,
+    payloads: list[dict] | None = None,
+) -> list[str]:
     """Start Suit-O, post the scenario, and return spoken event types in order."""
 
     speech = backend or StubSpeechBackend()
@@ -57,7 +62,8 @@ def run_simulation(config: Config, *, backend: StubSpeechBackend | None = None) 
     try:
         host, port = app.server_address
         url = f"http://{host}:{port}/"
-        payloads = build_scenario(config.server.token)
+        if payloads is None:
+            payloads = build_scenario(config.server.token)
         for index, payload in enumerate(payloads, start=1):
             post_payload(url, payload)
             # Wait until this snapshot has been applied and any line has
@@ -79,6 +85,11 @@ def main(argv: list[str] | None = None) -> int:
         description="Post a synthetic CS2 match at Suit-O with speech stubbed.",
     )
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
+    parser.add_argument(
+        "--menu",
+        action="store_true",
+        help="Post only the main-menu greeting. No match is simulated.",
+    )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(message)s")
     try:
@@ -88,8 +99,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     backend = StubSpeechBackend()
+    payloads = build_menu_scenario(config.server.token) if args.menu else None
     try:
-        spoken = run_simulation(config, backend=backend)
+        spoken = run_simulation(config, backend=backend, payloads=payloads)
     except (RuntimeError, urllib.error.URLError, OSError) as exc:
         print(f"Simulator failed: {exc}", file=sys.stderr)
         return 1
@@ -100,6 +112,17 @@ def main(argv: list[str] | None = None) -> int:
         if BOMB_POSITION_SENTINEL in text:
             print("Simulator failed: a line included the bomb position.", file=sys.stderr)
             return 1
+
+    if args.menu:
+        greetings = [item for item in spoken if item == "menu_greeting"]
+        if len(greetings) != 1:
+            print(
+                f"Menu greeting should be spoken once, got {len(greetings)}.",
+                file=sys.stderr,
+            )
+            return 1
+        print("Main-menu greeting spoken once.")
+        return 0
 
     expected = {event.value for event in EventType}
     got = set(spoken)

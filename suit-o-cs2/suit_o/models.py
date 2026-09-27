@@ -18,6 +18,7 @@ class EventType(str, Enum):
     MATCH_END = "match_end"
     WARMUP = "warmup"
     IDLE = "idle"
+    MENU_GREETING = "menu_greeting"
     ROUND_FREEZETIME = "round_freezetime"
     BUY_LOW_MONEY = "buy_low_money"
     BOMB_PLANTED = "bomb_planted"
