@@ -16,10 +16,10 @@ from suit_o.gui.status import (
 )
 from suit_o.speech.devices import WINDOWS_DEFAULT_LABEL
 
-JBL_GAME = "Speakers (JBL Quantum 950X Wireless For Xbox Game)"
-JBL_CHAT = "Headset Earphone (JBL Quantum 950X Wireless For Xbox Chat)"
+GAME = "Speakers (Example Headset Game)"
+CHAT = "Headset Earphone (Example Chat)"
 REALTEK = "Realtek Digital Output"
-MONITOR = "LG ULTRAGEAR (NVIDIA High Definition Audio)"
+MONITOR = "Monitor (Example Display)"
 
 
 def test_listener_and_game_state_wording():
@@ -44,12 +44,12 @@ def test_listener_and_game_state_wording():
 
 
 def test_device_menu_keeps_the_default_and_a_missing_saved_name():
-    names = [JBL_GAME, JBL_CHAT, REALTEK, MONITOR]
+    names = [GAME, CHAT, REALTEK, MONITOR]
     labels = device_menu_labels(names, "")
     assert labels[0] == WINDOWS_DEFAULT_LABEL
     assert all("microphone" not in label.lower() for label in labels)
     assert selected_device_label("", names) == WINDOWS_DEFAULT_LABEL
-    assert selected_device_label("chat", names) == JBL_CHAT
+    assert selected_device_label("chat", names) == CHAT
     unplugged = device_menu_labels(names, "Old Headset")
     assert unplugged[-1] == "Old Headset"
     assert selected_device_label("Old Headset", names) == "Old Headset"

@@ -1,7 +1,7 @@
 """Reserved remote TTS backend. Not implemented in v1.
 
-A later version may send text to an HTTP TTS server on a home-LAN machine
-(the intended host is a DGX Spark) and play the returned audio. That client
+A later version may send text to an HTTP TTS server on a machine on your
+home network and play the returned audio. That client
 must not be added until the playback path is still a local output device and
 still cannot reach voice chat. This module deliberately has no HTTP code.
 """
@@ -24,8 +24,8 @@ class RemoteTtsBackend(SpeechBackend):
         raise NotImplementedError(
             "The remote TTS backend is not implemented in Suit-O v1. "
             "Set speech.backend to pyttsx3. A future version may POST text to "
-            "speech.remote.url (an HTTP TTS server on the home LAN, such as a "
-            "DGX Spark) and play the returned audio on the configured playback "
+            "speech.remote.url (an HTTP TTS server on a machine on your home "
+            "network) and play the returned audio on the configured playback "
             "device only. It must not route audio into Counter-Strike voice chat."
         )
 

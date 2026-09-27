@@ -16,31 +16,31 @@ from suit_o.speech.devices import (
 )
 from suit_o.speech.stub import StubSpeechBackend
 
-JBL_GAME = "Speakers (JBL Quantum 950X Wireless For Xbox Game)"
-JBL_CHAT = "Headset Earphone (JBL Quantum 950X Wireless For Xbox Chat)"
+GAME = "Speakers (Example Headset Game)"
+CHAT = "Headset Earphone (Example Chat)"
 REALTEK = "Realtek Digital Output"
-MONITOR = "LG ULTRAGEAR (NVIDIA High Definition Audio)"
-JBL_MIC = "Headset Microphone (JBL Quantum 950X Wireless For Xbox Chat)"
-PLAYBACK = [JBL_GAME, JBL_CHAT, REALTEK, MONITOR, JBL_MIC]
+MONITOR = "Monitor (Example Display)"
+MIC = "Headset Microphone (Example Chat)"
+PLAYBACK = [GAME, CHAT, REALTEK, MONITOR, MIC]
 
 
 def test_selectable_names_drop_microphones_and_duplicates():
     names = selectable_playback_names(
-        ["", JBL_GAME, JBL_MIC, "CABLE Output", JBL_CHAT, JBL_CHAT, REALTEK, MONITOR, "  "]
+        ["", GAME, MIC, "CABLE Output", CHAT, CHAT, REALTEK, MONITOR, "  "]
     )
-    assert names == [JBL_GAME, JBL_CHAT, REALTEK, MONITOR]
+    assert names == [GAME, CHAT, REALTEK, MONITOR]
 
 
 def test_resolve_output_device_picks_one_endpoint_and_refuses_a_mic():
     assert resolve_output_device("", PLAYBACK) == ""
     assert resolve_output_device("Windows default", PLAYBACK) == ""
-    assert resolve_output_device("chat", PLAYBACK) == JBL_CHAT
-    assert resolve_output_device(JBL_GAME, PLAYBACK) == JBL_GAME
+    assert resolve_output_device("chat", PLAYBACK) == CHAT
+    assert resolve_output_device(GAME, PLAYBACK) == GAME
     assert resolve_output_device("realtek", PLAYBACK) == REALTEK
-    assert resolve_output_device("ultragear", PLAYBACK) == MONITOR
+    assert resolve_output_device("display", PLAYBACK) == MONITOR
 
     try:
-        resolve_output_device(JBL_MIC, PLAYBACK)
+        resolve_output_device(MIC, PLAYBACK)
         refused = False
     except ConfigError as exc:
         refused = True
@@ -48,12 +48,12 @@ def test_resolve_output_device_picks_one_endpoint_and_refuses_a_mic():
     assert refused
 
     try:
-        resolve_output_device("JBL", PLAYBACK)
+        resolve_output_device("Headset", PLAYBACK)
         ambiguous = False
     except DeviceSelectionError as exc:
         ambiguous = True
-        assert JBL_GAME in str(exc)
-        assert JBL_CHAT in str(exc)
+        assert GAME in str(exc)
+        assert CHAT in str(exc)
     assert ambiguous
 
     try:
@@ -87,7 +87,7 @@ def test_save_keeps_comments_and_round_trips(tmp_path: Path):
     save_user_settings(path, volume=0.85, muted=False, output_device="")
     assert path.read_bytes() == original
 
-    save_user_settings(path, volume=0.4, muted=True, output_device=JBL_CHAT)
+    save_user_settings(path, volume=0.4, muted=True, output_device=CHAT)
     text = path.read_text(encoding="utf-8")
     assert "Words per minute" in text
     assert "sample value" in text or "suito-local-change-me" in text
@@ -95,7 +95,7 @@ def test_save_keeps_comments_and_round_trips(tmp_path: Path):
     loaded = load_config(path)
     assert loaded.speech.volume == 0.4
     assert loaded.mute is True
-    assert loaded.speech.output_device == JBL_CHAT
+    assert loaded.speech.output_device == CHAT
     assert loaded.speech.rate == 185
     assert loaded.server.port == 3000
 
@@ -180,7 +180,7 @@ def test_app_applies_volume_mute_and_device_and_persists(tmp_path: Path):
         config_path=path,
         output_devices=lambda: list(PLAYBACK),
     )
-    assert app.output_device_names() == [JBL_GAME, JBL_CHAT, REALTEK, MONITOR]
+    assert app.output_device_names() == [GAME, CHAT, REALTEK, MONITOR]
     try:
         app.set_volume(2)
         rejected = False
@@ -190,7 +190,7 @@ def test_app_applies_volume_mute_and_device_and_persists(tmp_path: Path):
     assert app.config.speech.volume == 0.85
 
     try:
-        app.set_output_device(JBL_MIC)
+        app.set_output_device(MIC)
         refused = False
     except ConfigError as exc:
         refused = True
@@ -205,14 +205,14 @@ def test_app_applies_volume_mute_and_device_and_persists(tmp_path: Path):
         assert any("Listener up" in item.message for item in app.activity())
         app.set_volume(0.33)
         chosen = app.set_output_device("chat")
-        assert chosen == JBL_CHAT
+        assert chosen == CHAT
         app.set_muted(True)
         assert app.muted
         assert app.toggle_mute() is False
         app.set_muted(True)
         app.test_voice("Hello from Suit-O")
         assert app.speech.wait_until(
-            lambda: backend.volume == 0.33 and backend.output_device == JBL_CHAT,
+            lambda: backend.volume == 0.33 and backend.output_device == CHAT,
             2,
         )
         assert app.speech.wait_until(lambda: backend.spoken == ["Hello from Suit-O"], 2)
@@ -223,7 +223,7 @@ def test_app_applies_volume_mute_and_device_and_persists(tmp_path: Path):
 
     saved = load_config(path)
     assert saved.speech.volume == 0.33
-    assert saved.speech.output_device == JBL_CHAT
+    assert saved.speech.output_device == CHAT
     assert saved.mute is True
     assert "virtual cable" in path.read_text(encoding="utf-8")
 

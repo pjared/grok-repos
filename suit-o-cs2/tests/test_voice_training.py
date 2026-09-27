@@ -21,7 +21,7 @@ from suit_o.voice.script import load_script
 from suit_o.voice.session import RecordingSession, SessionError, silent_wav
 from suit_o.voice.wav import excerpt, read_wav, shape_waveform, write_wav
 
-JBL_MIC = "Headset Microphone (JBL Quantum 950X Wireless For Xbox Chat)"
+MIC = "Headset Microphone (Example Chat)"
 
 
 def test_shipped_script_is_a_short_original_set():
@@ -42,8 +42,8 @@ def test_session_records_replays_and_builds_a_profile(tmp_path: Path):
     session = RecordingSession(["Alpha line.", "Beta line."], tmp_path / "takes")
     assert session.recorded_count == 0
     assert session.total == 2
-    session.set_microphone(JBL_MIC)
-    assert session.microphone == JBL_MIC
+    session.set_microphone(MIC)
+    assert session.microphone == MIC
 
     try:
         session.stop_recording(silent_wav(1))
@@ -154,7 +154,7 @@ def test_clone_backend_is_selectable_without_the_optional_stack(tmp_path: Path):
     backend = create_backend(settings)
     assert isinstance(backend, CloneSpeechBackend)
     try:
-        backend.set_output_device(JBL_MIC)
+        backend.set_output_device(MIC)
         refused = False
     except RuntimeError as exc:
         refused = True

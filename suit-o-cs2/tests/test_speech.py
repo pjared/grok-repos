@@ -27,11 +27,11 @@ from suit_o.speech.stub import StubSpeechBackend
 # Names SAPI reports on the machine this was built for. The fourth endpoint
 # is the monitor. The microphone is the recording side of the same headset
 # and must never be selected.
-JBL_GAME = "Speakers (JBL Quantum 950X Wireless For Xbox Game)"
-JBL_CHAT = "Headset Earphone (JBL Quantum 950X Wireless For Xbox Chat)"
+GAME = "Speakers (Example Headset Game)"
+CHAT = "Headset Earphone (Example Chat)"
 REALTEK = "Realtek Digital Output"
-MONITOR = "LG ULTRAGEAR (NVIDIA High Definition Audio)"
-JBL_MIC = "Headset Microphone (JBL Quantum 950X Wireless For Xbox Chat)"
+MONITOR = "Monitor (Example Display)"
+MIC = "Headset Microphone (Example Chat)"
 
 
 class GateBackend(SpeechBackend):
@@ -184,19 +184,19 @@ def test_voice_and_device_matching():
     assert is_disallowed_output_device("VB-Audio Virtual Cable")
     assert not is_disallowed_output_device("Headset Earphone")
     assert not is_disallowed_output_device("")
-    assert not is_disallowed_output_device(JBL_GAME)
-    assert not is_disallowed_output_device(JBL_CHAT)
+    assert not is_disallowed_output_device(GAME)
+    assert not is_disallowed_output_device(CHAT)
     assert not is_disallowed_output_device(REALTEK)
     assert not is_disallowed_output_device(MONITOR)
-    assert is_disallowed_output_device(JBL_MIC)
+    assert is_disallowed_output_device(MIC)
 
     chat = select_output_token(
-        [(JBL_GAME, "game"), (JBL_CHAT, "chat"), (REALTEK, "realtek"), (MONITOR, "monitor")],
-        JBL_CHAT,
+        [(GAME, "game"), (CHAT, "chat"), (REALTEK, "realtek"), (MONITOR, "monitor")],
+        CHAT,
     )
     assert chat == "chat"
     exact = select_output_token(
-        [("Speakers", "short"), (JBL_GAME, "game")],
+        [("Speakers", "short"), (GAME, "game")],
         "Speakers",
     )
     assert exact == "short"
@@ -224,7 +224,7 @@ def test_speech_service_refuses_a_microphone_before_queueing():
     backend = StubSpeechBackend()
     service = SpeechService(backend, preempt_min_priority=70)
     try:
-        service.set_output_device(JBL_MIC)
+        service.set_output_device(MIC)
         refused = False
     except Exception as exc:
         refused = True
@@ -239,11 +239,11 @@ def test_pyttsx3_assigns_the_selected_playback_token_and_refuses_a_mic():
         voice="",
         rate=185,
         volume=0.85,
-        output_device=JBL_CHAT,
+        output_device=CHAT,
     )
     backend = Pyttsx3Backend(settings)
-    game = _Token(JBL_GAME)
-    chat = _Token(JBL_CHAT)
+    game = _Token(GAME)
+    chat = _Token(CHAT)
     realtek = _Token(REALTEK)
     monitor = _Token(MONITOR)
     engine = _Engine()
@@ -266,18 +266,18 @@ def test_pyttsx3_assigns_the_selected_playback_token_and_refuses_a_mic():
     assert engine.props["volume"] == 0.55
 
     try:
-        backend.set_output_device(JBL_MIC)
+        backend.set_output_device(MIC)
         refused = False
     except RuntimeError as exc:
         refused = True
         assert "microphone" in str(exc).lower()
     assert refused
-    assert settings.output_device == JBL_CHAT
+    assert settings.output_device == CHAT
 
-    mic = _Token(JBL_MIC)
+    mic = _Token(MIC)
     settings.output_device = "microphone"
     try:
-        backend._apply_output_device(engine, devices=[(JBL_MIC, mic), (JBL_CHAT, chat)])
+        backend._apply_output_device(engine, devices=[(MIC, mic), (CHAT, chat)])
         assigned_mic = False
     except RuntimeError:
         assigned_mic = True
@@ -291,20 +291,20 @@ def test_substring_that_matches_two_outputs_uses_the_first_and_warns(caplog):
         voice="",
         rate=185,
         volume=1.0,
-        output_device="JBL",
+        output_device="Headset",
     )
     backend = Pyttsx3Backend(settings)
     engine = _Engine()
-    game = _Token(JBL_GAME)
-    chat = _Token(JBL_CHAT)
+    game = _Token(GAME)
+    chat = _Token(CHAT)
     with caplog.at_level(logging.WARNING):
         backend._apply_output_device(
             engine,
-            devices=[(JBL_GAME, game), (JBL_CHAT, chat), (REALTEK, _Token(REALTEK))],
+            devices=[(GAME, game), (CHAT, chat), (REALTEK, _Token(REALTEK))],
         )
     assert engine.tts.AudioOutput is game
     assert "matches" in caplog.text
-    assert JBL_CHAT in caplog.text
+    assert CHAT in caplog.text
 
 
 def test_preview_override_does_not_replace_saved_tuning():

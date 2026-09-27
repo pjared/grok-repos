@@ -30,7 +30,7 @@ from suit_o.update import (
     run_git_update,
 )
 
-JBL_CHAT = "Headset Earphone (JBL Quantum 950X Wireless For Xbox Chat)"
+CHAT = "Headset Earphone (Example Chat)"
 
 
 def test_debouncer_waits_for_a_quiet_gap_then_fires_once():
@@ -90,20 +90,20 @@ def test_local_overlay_wins_and_migration_keeps_the_jbl_device(tmp_path: Path):
 
     edited = path.read_text(encoding="utf-8").replace(
         'output_device: ""',
-        f'output_device: "{JBL_CHAT}"',
+        f'output_device: "{CHAT}"',
         1,
     )
     path.write_text(edited, encoding="utf-8")
     assert migrate_user_settings(path) is True
     saved = load_config(path)
-    assert saved.speech.output_device == JBL_CHAT
+    assert saved.speech.output_device == CHAT
     restored = path.read_text(encoding="utf-8")
     assert 'output_device: ""' in restored
-    assert JBL_CHAT not in restored
+    assert CHAT not in restored
     assert "virtual cable" in restored
     assert "Do not set a microphone" in restored
     local_text = local_config_path(path).read_text(encoding="utf-8")
-    assert JBL_CHAT in local_text
+    assert CHAT in local_text
 
     local_config_path(path).write_text("speech:\n  volume: 0.2\n", encoding="utf-8")
     before = path.read_bytes()
@@ -121,16 +121,16 @@ def test_app_save_writes_the_local_file_and_leaves_config_yaml(tmp_path: Path):
         config,
         backend=StubSpeechBackend(),
         config_path=path,
-        output_devices=lambda: [JBL_CHAT],
+        output_devices=lambda: [CHAT],
     )
     app.set_volume(0.33)
-    app.set_output_device(JBL_CHAT)
+    app.set_output_device(CHAT)
     app.set_muted(True)
     app.save_preferences()
     assert path.read_bytes() == original
     saved = load_config(path)
     assert saved.speech.volume == 0.33
-    assert saved.speech.output_device == JBL_CHAT
+    assert saved.speech.output_device == CHAT
     assert saved.mute is True
     assert "virtual cable" in path.read_text(encoding="utf-8")
 
@@ -381,7 +381,7 @@ def test_store_refuses_a_microphone_without_writing_local(tmp_path: Path):
     path = tmp_path / "config.yaml"
     path.write_bytes(DEFAULT_CONFIG_PATH.read_bytes())
     try:
-        store_personal_settings(path, output_device="Headset Microphone (JBL)")
+        store_personal_settings(path, output_device="Headset Microphone (Example)")
         refused = False
     except ConfigError:
         refused = True
