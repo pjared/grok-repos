@@ -12,7 +12,7 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ### Fixed
 
-- Reloading lines keeps each line's cooldown, so a line that just played is not spoken again immediately.
+- Reloading lines keeps each line's cooldown, so a line that just played is not spoken again immediately. (`cec3a06`)
 
 ## [0.19.9] - 2026-09-27
 
