@@ -1,7 +1,8 @@
-"""Lineups tab: import images, order them, and set the overlay.
+"""Lineups tab: browse a pack, import images, and set the overlay.
 
-The tab edits files under ``lineups/``. It does not decide when a card is
-shown during a match. That stays in ``suit_o.lineups``.
+The tab edits files under ``lineups/`` and reads ``lineup-data/``. It does not
+decide when a card is shown during a match. That stays in ``suit_o.lineups``.
+Copy setpos puts practice-server text on the clipboard. It is never sent to CS2.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from suit_o.app import SuitOApp
 from suit_o.config import ConfigError
+from suit_o.gui.grenade_icons import grenade_icons
 from suit_o.lineups.library import (
     LibraryError,
     LineupCard,
@@ -23,7 +25,14 @@ from suit_o.lineups.library import (
     rename_card,
     set_caption,
 )
-from suit_o.lineups.pack import PackError, import_pack as copy_lineup_pack, pack_cards
+from suit_o.lineups.pack import (
+    PACK_FILENAME,
+    PackError,
+    import_pack as copy_lineup_pack,
+    load_pack_file,
+    map_counts,
+    pack_cards,
+)
 from suit_o.lineups.place import CORNERS
 
 PREMIER_MAPS = (
@@ -37,6 +46,9 @@ PREMIER_MAPS = (
     "de_train",
     "de_vertigo",
 )
+_SIDES = ("All", "T", "CT")
+_GRENADES = ("All", "smoke", "flash", "molotov", "he")
+_STATUSES = ("All", "draft", "verified")
 
 
 class LineupsPanel:
@@ -44,45 +56,94 @@ class LineupsPanel:
         self.app = app
         self._on_saved = on_saved
         self._cards: list[LineupCard] = []
+        self._map_keys: list[str | None] = []
+        self._filling_maps = False
         self._photo: tk.PhotoImage | None = None
+        self._aim_photo: tk.PhotoImage | None = None
+        self._icons = grenade_icons(parent)
 
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(2, weight=1)
         ttk.Label(
             parent,
             text=(
-                "Put your own smoke screenshots in lineups/<map>/<t|ct>/, "
-                "or import a lineup pack (a folder or zip with lineups.json). "
-                "Pack photos stay in lineup-data/ on this machine. "
-                "The overlay is a separate click-through window. It never reads game memory "
-                "and its hotkeys are not sent to CS2. Use borderless or windowed mode."
+                "Every lineup in an imported pack is listed here. Filter by map, side, "
+                "grenade, and status. Folder screenshots in lineups/<map>/<t|ct>/ are smokes. "
+                "Pack photos stay in lineup-data/ on this machine and are not committed. "
+                "The overlay follows the grenade in your hand. Copy setpos copies practice-server "
+                "text only. That string is never sent to CS2."
             ),
-            wraplength=700,
+            wraplength=820,
             justify="left",
         ).grid(row=0, column=0, sticky="ew")
 
         picks = ttk.Frame(parent)
         picks.grid(row=1, column=0, sticky="ew", pady=(8, 4))
-        ttk.Label(picks, text="Map").grid(row=0, column=0, sticky="w")
-        self.map_name = ttk.Combobox(picks, width=18, state="readonly")
-        self.map_name.grid(row=0, column=1, sticky="w", padx=(6, 12))
-        self.map_name.bind("<<ComboboxSelected>>", lambda _event: self.reload())
-        ttk.Label(picks, text="Side").grid(row=0, column=2, sticky="w")
-        self.side = ttk.Combobox(picks, width=6, state="readonly", values=("CT", "T"))
-        self.side.grid(row=0, column=3, sticky="w", padx=(6, 0))
-        self.side.set("CT")
+        ttk.Label(picks, text="Side").grid(row=0, column=0, sticky="w")
+        self.side = ttk.Combobox(picks, width=6, state="readonly", values=_SIDES)
+        self.side.grid(row=0, column=1, sticky="w", padx=(6, 12))
+        self.side.set("All")
         self.side.bind("<<ComboboxSelected>>", lambda _event: self.reload())
+        ttk.Label(picks, text="Grenade").grid(row=0, column=2, sticky="w")
+        self.grenade = ttk.Combobox(picks, width=10, state="readonly", values=_GRENADES)
+        self.grenade.grid(row=0, column=3, sticky="w", padx=(6, 12))
+        self.grenade.set("All")
+        self.grenade.bind("<<ComboboxSelected>>", lambda _event: self.reload())
+        ttk.Label(picks, text="Status").grid(row=0, column=4, sticky="w")
+        self.status_filter = ttk.Combobox(picks, width=10, state="readonly", values=_STATUSES)
+        self.status_filter.grid(row=0, column=5, sticky="w", padx=(6, 0))
+        self.status_filter.set("All")
+        self.status_filter.bind("<<ComboboxSelected>>", lambda _event: self.reload())
 
         body = ttk.Frame(parent)
         body.grid(row=2, column=0, sticky="nsew")
-        body.columnconfigure(0, weight=1)
         body.columnconfigure(1, weight=1)
+        body.columnconfigure(2, weight=1)
         body.rowconfigure(0, weight=1)
-        self.cards = tk.Listbox(body, height=8, activestyle="dotbox")
-        self.cards.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
-        self.cards.bind("<<ListboxSelect>>", lambda _event: self._show_selected())
-        self.preview = tk.Label(body, bg="#f4f4f4", width=36, height=8, anchor="center")
-        self.preview.grid(row=0, column=1, sticky="nsew")
+        self.maps = tk.Listbox(body, height=8, width=18, activestyle="dotbox", exportselection=False)
+        self.maps.grid(row=0, column=0, sticky="ns", padx=(0, 8))
+        self.maps.bind("<<ListboxSelect>>", self._on_map)
+        self.cards = ttk.Treeview(
+            body,
+            columns=("map", "side", "status"),
+            show="tree headings",
+            height=8,
+            selectmode="browse",
+        )
+        self.cards.heading("#0", text="Lineup")
+        self.cards.heading("map", text="Map")
+        self.cards.heading("side", text="Side")
+        self.cards.heading("status", text="Status")
+        self.cards.column("#0", width=200, stretch=True)
+        self.cards.column("map", width=72, stretch=False)
+        self.cards.column("side", width=44, stretch=False)
+        self.cards.column("status", width=68, stretch=False)
+        self.cards.grid(row=0, column=1, sticky="nsew", padx=(0, 8))
+        self.cards.bind("<<TreeviewSelect>>", lambda _event: self._show_selected())
+
+        preview = ttk.Frame(body)
+        preview.grid(row=0, column=2, sticky="nsew")
+        preview.columnconfigure(0, weight=1)
+        preview.columnconfigure(1, weight=1)
+        photos = ttk.Frame(preview)
+        photos.grid(row=0, column=0, columnspan=2, sticky="nsew")
+        photos.columnconfigure(0, weight=1)
+        photos.columnconfigure(1, weight=1)
+        self.preview = tk.Label(photos, bg="#f4f4f4", width=18, height=6, anchor="center")
+        self.preview.grid(row=0, column=0, sticky="nsew")
+        self.preview_aim = tk.Label(photos, bg="#f4f4f4", width=18, height=6, anchor="center")
+        self.preview_aim.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
+        ttk.Label(preview, text="setpos").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        self.copy_button = ttk.Button(preview, text="Copy setpos", command=self.copy_setpos)
+        self.copy_button.grid(row=1, column=1, sticky="e", pady=(6, 0))
+        self.setpos_box = tk.Text(preview, height=3, wrap="word", width=28)
+        self.setpos_box.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(4, 0))
+        self.setpos_box.configure(state="disabled")
+        ttk.Label(
+            preview,
+            text="Practice server only. Never sent to CS2.",
+            wraplength=260,
+        ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(2, 0))
 
         buttons = ttk.Frame(parent)
         buttons.grid(row=3, column=0, sticky="w", pady=(6, 4))
@@ -101,10 +162,6 @@ class LineupsPanel:
         self.enabled = tk.BooleanVar(value=settings.enabled)
         ttk.Checkbutton(form, text="Overlay enabled", variable=self.enabled).grid(
             row=0, column=0, columnspan=2, sticky="w"
-        )
-        self.smokes_only = tk.BooleanVar(value=settings.smokes_only)
-        ttk.Checkbutton(form, text="Smokes only", variable=self.smokes_only).grid(
-            row=0, column=2, sticky="w"
         )
         ttk.Label(form, text="Width").grid(row=1, column=0, sticky="w")
         self.width = tk.DoubleVar(value=settings.width)
@@ -148,9 +205,10 @@ class LineupsPanel:
         )
         ttk.Button(keys, text="Save overlay", command=self.save).grid(row=1, column=3, sticky="e", pady=(4, 0))
 
-        self.status = ttk.Label(parent, wraplength=700, justify="left")
+        self.status = ttk.Label(parent, wraplength=820, justify="left")
         self.status.grid(row=7, column=0, sticky="ew", pady=(6, 0))
         self._paint_captions()
+        self.copy_button.state(["disabled"])
         self.reload_maps()
 
     def sync_from_app(self) -> None:
@@ -158,7 +216,6 @@ class LineupsPanel:
 
         settings = self.app.config.lineups
         self.enabled.set(settings.enabled)
-        self.smokes_only.set(settings.smokes_only)
         self.width.set(settings.width)
         self.opacity.set(round(settings.opacity * 100))
         if settings.corner in CORNERS:
@@ -180,42 +237,98 @@ class LineupsPanel:
             self.monitor.set(labels[0])
 
     def reload_maps(self) -> None:
-        found = known_maps(self.app.lineups_dir)
-        names = list(PREMIER_MAPS)
-        for name in found:
-            if name not in names:
-                names.append(name)
-        self.map_name["values"] = names
-        if self.map_name.get() not in names:
-            self.map_name.set("de_dust2" if "de_dust2" in names else names[0])
+        previous = self._current_map_key()
+        labels = ["All maps"]
+        keys: list[str | None] = [None]
+        seen: set[str] = set()
+        pack = self._loaded_pack()
+        for name, count in map_counts(pack) if pack is not None else []:
+            key = name.strip().lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            labels.append(f"{name} ({count})")
+            keys.append(name)
+        folder_names = list(PREMIER_MAPS)
+        for name in known_maps(self.app.lineups_dir):
+            if name not in folder_names:
+                folder_names.append(name)
+        for name in folder_names:
+            short = name[3:] if name.startswith(("de_", "cs_", "ar_")) else name
+            if name.lower() in seen or short.lower() in seen:
+                continue
+            labels.append(name)
+            keys.append(name)
+            seen.add(name.lower())
+        self._filling_maps = True
+        try:
+            self.maps.delete(0, "end")
+            for label in labels:
+                self.maps.insert("end", label)
+            self._map_keys = keys
+            chosen = 0
+            for index, key in enumerate(keys):
+                if key == previous or (
+                    isinstance(key, str) and isinstance(previous, str) and key.lower() == previous.lower()
+                ):
+                    chosen = index
+                    break
+            self.maps.selection_clear(0, "end")
+            self.maps.selection_set(chosen)
+            self.maps.activate(chosen)
+        finally:
+            self._filling_maps = False
         self.reload()
 
     def reload(self) -> None:
-        side = self.side.get() or "CT"
-        self._cards = list_cards(self.app.lineups_dir, self.map_name.get(), side)
+        self._cards = self._folder_cards()
         self._cards.extend(
-            pack_cards(self.app.pack_dir, self.map_name.get(), side, smokes_only=False)
+            pack_cards(
+                self.app.pack_dir,
+                self._current_map_key(),
+                self._filter_value(self.side.get()),
+                grenade=self._filter_value(self.grenade.get()),
+                status=self._filter_value(self.status_filter.get()),
+            )
         )
-        self.cards.delete(0, "end")
-        for card in self._cards:
-            label = card.caption if not card.lineup_id else f"{card.caption}  · pack"
-            self.cards.insert("end", label)
+        children = self.cards.get_children()
+        if children:
+            self.cards.delete(*children)
+        for index, card in enumerate(self._cards):
+            icon = self._icons.get(card.grenade)
+            kwargs = {}
+            if icon is not None:
+                kwargs["image"] = icon
+            self.cards.insert(
+                "",
+                "end",
+                iid=str(index),
+                text=card.name or card.caption,
+                values=(self._card_map(card), self._card_side(card), card.status),
+                **kwargs,
+            )
         if self._cards:
-            self.cards.selection_set(0)
+            self.cards.selection_set("0")
+            self.cards.focus("0")
             self._show_selected()
         else:
-            self._photo = None
-            self.preview.configure(image="", text="No images for this map and side yet.")
+            self._clear_preview("No lineups for this filter.")
+        map_label = self.maps.get(self.maps.curselection()[0]) if self.maps.curselection() else "All maps"
         self.status.configure(
             text=(
-                f"{len(self._cards)} lineup(s) for {self.map_name.get()} {self.side.get()}. "
-                "Shown while you hold a smoke, are alive, and the round is not over."
+                f"{len(self._cards)} lineup(s) for {map_label}. "
+                "The overlay follows the grenade in your hand while you are alive "
+                "and the round is not over."
             )
         )
 
     def import_files(self) -> None:
+        target = self._import_target()
+        if target is None:
+            return
+        map_name, side = target
         paths = filedialog.askopenfilenames(
-            parent=self.cards.winfo_toplevel(),
+            parent=self.maps.winfo_toplevel(),
             title="Import lineup screenshots",
             filetypes=[("PNG images", "*.png")],
         )
@@ -224,12 +337,7 @@ class LineupsPanel:
         added = 0
         for raw in paths:
             try:
-                import_image(
-                    self.app.lineups_dir,
-                    self.map_name.get(),
-                    self.side.get(),
-                    Path(raw),
-                )
+                import_image(self.app.lineups_dir, map_name, side, Path(raw))
                 added += 1
             except LibraryError as exc:
                 messagebox.showerror("Suit-O", str(exc))
@@ -243,11 +351,11 @@ class LineupsPanel:
         choice = messagebox.askyesnocancel(
             "Import pack",
             "Import a .zip lineup pack?\n\nYes opens a zip file.\nNo opens a folder.\nCancel stops.",
-            parent=self.cards.winfo_toplevel(),
+            parent=self.maps.winfo_toplevel(),
         )
         if choice is None:
             return
-        parent = self.cards.winfo_toplevel()
+        parent = self.maps.winfo_toplevel()
         if choice:
             selected = filedialog.askopenfilename(
                 parent=parent,
@@ -266,7 +374,7 @@ class LineupsPanel:
         except PackError as exc:
             messagebox.showerror("Suit-O", str(exc))
             return
-        self.reload()
+        self.reload_maps()
         self.status.configure(
             text=(
                 f"Pack imported. {result.added} added, {result.replaced} replaced. "
@@ -312,8 +420,9 @@ class LineupsPanel:
             return
         if not self._folder_card(card):
             return
+        map_name, side = self._folder_place(card)
         try:
-            move_card(self.app.lineups_dir, self.map_name.get(), self.side.get(), card.filename, delta)
+            move_card(self.app.lineups_dir, map_name, side, card.filename, delta)
         except LibraryError as exc:
             messagebox.showerror("Suit-O", str(exc))
             return
@@ -332,6 +441,17 @@ class LineupsPanel:
             return
         self.reload()
 
+    def copy_setpos(self) -> None:
+        """Copy practice-server console text. Nothing is sent to CS2."""
+
+        card = self._selected()
+        if card is None or not card.setpos:
+            return
+        top = self.maps.winfo_toplevel()
+        top.clipboard_clear()
+        top.clipboard_append(card.setpos)
+        self.status.configure(text="Copied")
+
     def save(self) -> None:
         labels = list(self.monitor["values"])
         chosen = self.monitor.get()
@@ -346,7 +466,7 @@ class LineupsPanel:
                 hotkey_next=self.hotkey_next.get(),
                 hotkey_previous=self.hotkey_previous.get(),
                 hotkey_toggle=self.hotkey_toggle.get(),
-                smokes_only=bool(self.smokes_only.get()),
+                smokes_only=self.app.config.lineups.smokes_only,
             )
         except (ConfigError, ValueError, OSError) as exc:
             messagebox.showerror("Suit-O", str(exc))
@@ -358,6 +478,68 @@ class LineupsPanel:
         self.status.configure(text="Overlay settings saved.")
         self._on_saved()
 
+    def _on_map(self, _event: object) -> None:
+        if self._filling_maps:
+            return
+        self.reload()
+
+    def _loaded_pack(self):
+        path = self.app.pack_dir / PACK_FILENAME
+        if not path.is_file():
+            return None
+        try:
+            return load_pack_file(path)
+        except PackError:
+            return None
+
+    def _current_map_key(self) -> str | None:
+        if not self._map_keys:
+            return None
+        selected = self.maps.curselection()
+        if not selected:
+            return None
+        index = int(selected[0])
+        if index < 0 or index >= len(self._map_keys):
+            return None
+        return self._map_keys[index]
+
+    def _filter_value(self, value: str) -> str | None:
+        token = (value or "").strip()
+        if not token or token.lower() == "all":
+            return None
+        return token
+
+    def _folder_cards(self) -> list[LineupCard]:
+        if self._filter_value(self.grenade.get()) not in {None, "smoke"}:
+            return []
+        if self._filter_value(self.status_filter.get()) is not None:
+            return []
+        side = self._filter_value(self.side.get())
+        sides = ("T", "CT") if side is None else (side,)
+        map_key = self._current_map_key()
+        maps = [key for key in self._map_keys if key] if map_key is None else [map_key]
+        cards: list[LineupCard] = []
+        seen: set[Path] = set()
+        for name in maps:
+            for one_side in sides:
+                for card in list_cards(self.app.lineups_dir, name, one_side):
+                    if card.path in seen:
+                        continue
+                    seen.add(card.path)
+                    cards.append(card)
+        return cards
+
+    def _import_target(self) -> tuple[str, str] | None:
+        map_key = self._current_map_key()
+        side = self.side.get()
+        if not map_key:
+            messagebox.showerror("Suit-O", "Pick a map before importing screenshots.")
+            return None
+        if side not in {"T", "CT"}:
+            messagebox.showerror("Suit-O", "Pick T or CT before importing screenshots.")
+            return None
+        return map_key, side
+
     def _folder_card(self, card: LineupCard) -> bool:
         if not card.lineup_id:
             return True
@@ -367,24 +549,72 @@ class LineupsPanel:
         )
         return False
 
+    def _folder_place(self, card: LineupCard) -> tuple[str, str]:
+        return card.path.parent.parent.name, card.path.parent.name
+
     def _selected(self) -> LineupCard | None:
-        if not self.cards.curselection():
+        selected = self.cards.selection()
+        if not selected:
             return None
-        index = int(self.cards.curselection()[0])
+        try:
+            index = int(selected[0])
+        except ValueError:
+            return None
         if index < 0 or index >= len(self._cards):
             return None
         return self._cards[index]
+
+    def _card_map(self, card: LineupCard) -> str:
+        if card.map_name:
+            return card.map_name
+        return card.path.parent.parent.name
+
+    def _card_side(self, card: LineupCard) -> str:
+        if card.side:
+            return card.side
+        return card.path.parent.name.upper()
 
     def _show_selected(self) -> None:
         card = self._selected()
         if card is None:
             return
         try:
-            self._photo = _fit_photo(str(card.path), 280)
+            self._photo = _fit_photo(str(card.path), 180)
         except tk.TclError as exc:
-            self.preview.configure(image="", text=str(exc))
+            self._clear_preview(str(exc))
             return
         self.preview.configure(image=self._photo, text="")
+        if card.aim_path is not None:
+            try:
+                self._aim_photo = _fit_photo(str(card.aim_path), 180)
+            except tk.TclError:
+                self._aim_photo = None
+                self.preview_aim.configure(image="", text="")
+            else:
+                self.preview_aim.configure(image=self._aim_photo, text="")
+        else:
+            self._aim_photo = None
+            self.preview_aim.configure(image="", text="")
+        self._set_setpos(card.setpos)
+        if card.setpos:
+            self.copy_button.state(["!disabled"])
+        else:
+            self.copy_button.state(["disabled"])
+
+    def _clear_preview(self, message: str) -> None:
+        self._photo = None
+        self._aim_photo = None
+        self.preview.configure(image="", text=message)
+        self.preview_aim.configure(image="", text="")
+        self._set_setpos("")
+        self.copy_button.state(["disabled"])
+
+    def _set_setpos(self, text: str) -> None:
+        self.setpos_box.configure(state="normal")
+        self.setpos_box.delete("1.0", "end")
+        if text:
+            self.setpos_box.insert("1.0", text)
+        self.setpos_box.configure(state="disabled")
 
     def _paint_captions(self) -> None:
         try:

@@ -57,13 +57,14 @@ class LineupDeck:
         """Step to another card. Does not show the overlay by itself."""
 
         with self._lock:
-            cards = self._cards_locked()
+            decision = self._decision_locked()
+            cards = self._cards_locked(decision.grenade)
             if cards:
                 self._index = (self._index + delta) % len(cards)
-            return self._view_locked(self._decision_locked())
+            return self._view_locked(decision)
 
     def toggle(self) -> DeckView:
-        """Hide or show. Showing still waits until a smoke is in hand."""
+        """Hide or show. Showing still waits until a grenade is in hand."""
 
         with self._lock:
             self.hidden = not self.hidden
@@ -74,6 +75,8 @@ class LineupDeck:
             self.enabled = enabled
 
     def set_smokes_only(self, smokes_only: bool) -> None:
+        """Kept so older configs still load. The overlay follows the held grenade."""
+
         with self._lock:
             self.smokes_only = bool(smokes_only)
 
@@ -105,10 +108,12 @@ class LineupDeck:
             round_phase=self._round_phase,
         )
 
-    def _cards_locked(self) -> list[LineupCard]:
+    def _cards_locked(self, grenade: str) -> list[LineupCard]:
         if not self._map_key or self._side not in {"t", "ct"}:
             return []
-        cards = list_cards(self.root, self._map_key, self._side)
+        if grenade not in {"smoke", "flash", "molotov", "he"}:
+            return []
+        cards = list_cards(self.root, self._map_key, self._side) if grenade == "smoke" else []
         if self.pack_dir is not None:
             from suit_o.lineups.pack import pack_cards
 
@@ -117,14 +122,14 @@ class LineupDeck:
                     self.pack_dir,
                     self._map_key,
                     self._side,
-                    smokes_only=self.smokes_only,
+                    grenade=grenade,
                 )
             )
         return cards
 
     def _view_locked(self, decision: OverlayDecision) -> DeckView:
-        bucket = (decision.map_key, decision.side)
-        cards = self._cards_locked()
+        bucket = (decision.map_key, decision.side, decision.grenade)
+        cards = self._cards_locked(decision.grenade)
         if bucket != self._bucket:
             self._bucket = bucket
             self._index = 0
@@ -135,9 +140,7 @@ class LineupDeck:
             self._index %= len(cards)
             card = cards[self._index]
         visible = decision.visible and card is not None
-        reason = decision.reason if decision.reason != "smoke" or card is not None else "no-lineups"
-        if decision.visible and card is None:
-            reason = "no-lineups"
+        reason = "no-lineups" if decision.visible and card is None else decision.reason
         return DeckView(
             visible=visible,
             reason=reason,

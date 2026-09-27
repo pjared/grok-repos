@@ -95,8 +95,9 @@ ptt:
   keybind: ""
   cs2_voice_key: "v"
 
-# Smoke lineup overlay. A separate always-on-top window. It never sends keys
-# to CS2. Hotkeys must not match ptt.cs2_voice_key or ptt.keybind.
+# Lineup overlay. A separate always-on-top window. It follows the grenade in
+# your hand (smoke, flash, molotov, or HE). It never sends keys or setpos to
+# CS2. Hotkeys must not match ptt.cs2_voice_key or ptt.keybind.
 lineups:
   enabled: true
   # Card width in pixels. Height follows the image.

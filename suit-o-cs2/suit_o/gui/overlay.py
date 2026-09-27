@@ -14,6 +14,7 @@ from pathlib import Path
 import tkinter as tk
 
 from suit_o.app import SuitOApp
+from suit_o.gui.grenade_icons import grenade_icons
 from suit_o.lineups.library import LineupCard
 from suit_o.lineups.place import Monitor, pick_monitor, place_overlay
 
@@ -48,13 +49,18 @@ class LineupOverlay:
             self.top.attributes("-alpha", float(app.config.lineups.opacity))
         except tk.TclError:
             logger.debug("This display cannot set window opacity", exc_info=True)
+        self._icons = grenade_icons(self.top)
         self.photos = tk.Frame(self.top, bg="#1b1b1b")
         self.photos.pack()
         self.image = tk.Label(self.photos, bg="#1b1b1b", bd=0)
         self.image.pack(side="left")
         self.aim = tk.Label(self.photos, bg="#1b1b1b", bd=0)
+        self.caption_row = tk.Frame(self.top, bg="#1b1b1b")
+        self.caption_row.pack(fill="x")
+        self.icon = tk.Label(self.caption_row, bg="#1b1b1b", bd=0)
+        self.icon.pack(side="left", padx=(8, 0))
         self.caption = tk.Label(
-            self.top,
+            self.caption_row,
             bg="#1b1b1b",
             fg="#f2f2f2",
             wraplength=320,
@@ -62,7 +68,7 @@ class LineupOverlay:
             padx=8,
             pady=4,
         )
-        self.caption.pack(fill="x")
+        self.caption.pack(side="left", fill="x", expand=True)
         self.top.bind("<FocusIn>", self._refuse_focus)
         self.top.withdraw()
         self._job = self.top.after(200, self.refresh)
@@ -121,7 +127,13 @@ class LineupOverlay:
             self._shown_path = signature[0][0]
             self._shown_aim = signature[1][0] if len(signature) > 1 else ""
             self._shown_width = width
-        self.caption.configure(text=f"{card.caption}  ({view.index + 1}/{view.total})", wraplength=width)
+        icon = self._icons.get(card.grenade)
+        if icon is None:
+            self.icon.pack_forget()
+        else:
+            self.icon.configure(image=icon)
+            self.icon.pack(side="left", padx=(8, 0))
+        self.caption.configure(text=f"{card.caption}  ({view.index + 1}/{view.total})", wraplength=max(1, width - 24))
         try:
             self.top.attributes("-alpha", float(settings.opacity))
         except tk.TclError:

@@ -162,8 +162,84 @@ def import_pack(source: Path, library: Path) -> ImportResult:
     raise PackError("Choose a lineup pack folder or a .zip file")
 
 
-def pack_cards(library: Path, map_token: str, side: str, *, smokes_only: bool) -> list[LineupCard]:
-    """Imported lineups for this map and side. Smokes-only hides other grenades."""
+def filter_lineups(
+    pack: LineupPack,
+    *,
+    map_name: str | None = None,
+    side: str | None = None,
+    grenade: str | None = None,
+    status: str | None = None,
+) -> list[PackLineup]:
+    """Lineups matching the browse filters. Blank or ``all`` leaves that filter open."""
+
+    wanted_maps: set[str] | None = None
+    if map_name and map_name.strip().lower() not in {"", "all"}:
+        wanted_maps = {name.lower() for name in map_folder_names(map_name)}
+    team: str | None = None
+    if side and side.strip().lower() not in {"", "all"}:
+        team = side.strip().upper()
+        if team not in SIDES:
+            return []
+    kind: str | None = None
+    if grenade and grenade.strip().lower() not in {"", "all"}:
+        kind = grenade.strip().lower()
+        if kind not in GRENADES:
+            return []
+    state: str | None = None
+    if status and status.strip().lower() not in {"", "all"}:
+        state = status.strip().lower()
+        if state not in STATUSES:
+            return []
+    found: list[PackLineup] = []
+    for item in pack.lineups:
+        if wanted_maps is not None and item.map.strip().lower() not in wanted_maps:
+            continue
+        if team is not None and item.side != team:
+            continue
+        if kind is not None and item.grenade != kind:
+            continue
+        if state is not None and item.status != state:
+            continue
+        found.append(item)
+    return found
+
+
+def map_counts(pack: LineupPack) -> list[tuple[str, int]]:
+    """Map names from the pack, in file order, each with how many lineups it has.
+
+    A name in ``maps`` with no lineups is still listed. A lineup map missing
+    from ``maps`` is appended.
+    """
+
+    counts: dict[str, int] = {}
+    for item in pack.lineups:
+        key = item.map.strip().lower()
+        counts[key] = counts.get(key, 0) + 1
+    listed: list[tuple[str, int]] = []
+    seen: set[str] = set()
+    for name in pack.maps:
+        key = name.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        listed.append((name.strip(), counts.get(key, 0)))
+    for item in pack.lineups:
+        key = item.map.strip().lower()
+        if key not in seen:
+            seen.add(key)
+            listed.append((key, counts[key]))
+    return listed
+
+
+def pack_cards(
+    library: Path,
+    map_token: str | None = None,
+    side: str | None = None,
+    *,
+    grenade: str | None = None,
+    status: str | None = None,
+) -> list[LineupCard]:
+    """Imported lineups. Omit a filter to include every value of that field."""
 
     path = Path(library) / PACK_FILENAME
     if not path.is_file():
@@ -172,19 +248,9 @@ def pack_cards(library: Path, map_token: str, side: str, *, smokes_only: bool) -
         pack = load_pack_file(path)
     except PackError:
         return []
-    wanted = set(map_folder_names(map_token))
-    team = side.strip().upper()
-    if team not in SIDES:
-        return []
     cards: list[LineupCard] = []
     root = path.parent
-    for item in pack.lineups:
-        if item.side != team:
-            continue
-        if item.map.strip().lower() not in wanted:
-            continue
-        if smokes_only and item.grenade != "smoke":
-            continue
+    for item in filter_lineups(pack, map_name=map_token, side=side, grenade=grenade, status=status):
         try:
             stand = _resolve_image(root, item.stand_image)
             aim = _resolve_image(root, item.aim_image)
@@ -197,6 +263,11 @@ def pack_cards(library: Path, map_token: str, side: str, *, smokes_only: bool) -
                 aim_path=aim,
                 grenade=item.grenade,
                 lineup_id=item.id,
+                setpos=item.setpos,
+                status=item.status,
+                name=item.name,
+                map_name=item.map,
+                side=item.side,
             )
         )
     return cards

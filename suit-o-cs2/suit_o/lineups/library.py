@@ -34,6 +34,11 @@ class LineupCard:
     aim_path: Path | None = None
     grenade: str = "smoke"
     lineup_id: str = ""
+    setpos: str = ""
+    status: str = ""
+    name: str = ""
+    map_name: str = ""
+    side: str = ""
 
     @property
     def filename(self) -> str:

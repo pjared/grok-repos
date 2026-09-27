@@ -1,8 +1,9 @@
-"""When the smoke overlay is allowed to be on screen.
+"""When the lineup overlay is allowed to be on screen.
 
 The decision uses the latest GSI snapshot only: map, side, the weapon in
 hand, health, and round phase. It does not know about pixels, hotkey APIs,
-or the game process.
+or the game process. Practice-server setpos text is never part of this decision
+and is never sent to CS2.
 """
 
 from __future__ import annotations
@@ -11,7 +12,15 @@ from dataclasses import dataclass
 
 from suit_o.models import Snapshot
 
-_SMOKE_NAMES = {"weapon_smokegrenade", "smokegrenade"}
+# Longer needles first so "smokegrenade" is not confused with a shorter token.
+_GRENADES = (
+    ("smokegrenade", "smoke"),
+    ("flashbang", "flash"),
+    ("incgrenade", "molotov"),
+    ("incendiary", "molotov"),
+    ("molotov", "molotov"),
+    ("hegrenade", "he"),
+)
 
 
 @dataclass(frozen=True)
@@ -22,17 +31,29 @@ class OverlayDecision:
     map_key: str
     side: str
     reason: str
+    grenade: str = ""
+
+
+def held_grenade(name: str | None) -> str | None:
+    """Map a GSI weapon name to smoke, flash, molotov, or he.
+
+    ``weapon_incgrenade`` is the CT incendiary and uses the molotov lineups.
+    Anything else, including rifles, is not a grenade lineup.
+    """
+
+    if not name:
+        return None
+    token = name.strip().lower().replace(" ", "").replace("-", "").replace("_", "")
+    for needle, kind in _GRENADES:
+        if needle in token:
+            return kind
+    return None
 
 
 def is_smoke_grenade(name: str | None) -> bool:
     """True for the CS2 smoke grenade name. Other grenades are not smokes."""
 
-    if not name:
-        return False
-    token = name.strip().lower().replace(" ", "").replace("-", "")
-    if token in _SMOKE_NAMES:
-        return True
-    return token.endswith("smokegrenade")
+    return held_grenade(name) == "smoke"
 
 
 def is_alive(health: int | None) -> bool:
@@ -51,25 +72,30 @@ def decide_overlay(
     user_hidden: bool,
     enabled: bool = True,
 ) -> OverlayDecision:
-    """Show a card only while a living player is holding a smoke in a live round."""
+    """Show a card while a living player holds a smoke, flash, molotov, or HE."""
 
     key = map_key.strip().lower()
     team = side.strip().lower()
+    grenade = held_grenade(active_weapon) or ""
+
+    def hidden(reason: str) -> OverlayDecision:
+        return OverlayDecision(False, key, team, reason, grenade)
+
     if not enabled:
-        return OverlayDecision(False, key, team, "disabled")
+        return hidden("disabled")
     if user_hidden:
-        return OverlayDecision(False, key, team, "hidden")
-    if not is_smoke_grenade(active_weapon):
-        return OverlayDecision(False, key, team, "not-smoke")
+        return hidden("hidden")
+    if not grenade:
+        return hidden("not-grenade")
     if not is_alive(health):
-        return OverlayDecision(False, key, team, "dead")
+        return hidden("dead")
     if (round_phase or "").strip().lower() == "over":
-        return OverlayDecision(False, key, team, "round-over")
+        return hidden("round-over")
     if not key:
-        return OverlayDecision(False, key, team, "no-map")
+        return hidden("no-map")
     if team not in {"t", "ct"}:
-        return OverlayDecision(False, key, team, "no-side")
-    return OverlayDecision(True, key, team, "smoke")
+        return hidden("no-side")
+    return OverlayDecision(True, key, team, grenade, grenade)
 
 
 def decision_from_snapshot(

@@ -10,7 +10,7 @@ Suit-O v1 runs on your PC. It uses Windows' built-in speech synthesizer. It does
 
 CS2 posts JSON to `http://127.0.0.1:3000` when you install the config file in this folder. Suit-O checks a shared auth token, then reacts to your own HUD state: your health, your money, your round kills, the round result, and whether the bomb was planted, defused, or exploded. Those are things you can already see or hear.
 
-Bomb coordinates and weapon lists may arrive in the payload because the config asks for the `bomb` and `player_weapons` blocks. Suit-O never reads coordinates and never subscribes to other players. It does not keep your inventory. The one weapon fact it reads is the name of the item in your hand, so the lineup overlay can tell that you are holding a smoke. Ammo and the rest of the loadout are ignored, and that name is never spoken. A clutch (last player alive) is not detected, because that would need everyone else's alive state.
+Bomb coordinates and weapon lists may arrive in the payload because the config asks for the `bomb` and `player_weapons` blocks. Suit-O never reads coordinates and never subscribes to other players. It does not keep your inventory. The one weapon fact it reads is the name of the item in your hand, so the lineup overlay can tell whether you are holding a smoke, flash, molotov, incendiary, or HE. Ammo and the rest of the loadout are ignored, and that name is never spoken. A clutch (last player alive) is not detected, because that would need everyone else's alive state.
 
 ## Layout
 
@@ -70,7 +70,7 @@ These steps assume Windows 10 or 11 and the default Steam library path. If CS2 i
 
    **Voice Training.** Record a short script in your own voice (or someone who agreed), then press **Build voice**. That stores a profile under `voices/` (gitignored) and adds it to the Voice tab. See [Voice cloning](#voice-cloning) below. The tab tells you if the optional packages are missing, and whether synthesis will use NVIDIA CUDA or the CPU.
 
-   **Lineups.** Import your own smoke screenshots and show them in a small overlay while you play. See [Smoke lineups](#smoke-lineups) below.
+   **Lineups.** Import your own screenshots or a lineup pack and show them in a small overlay while you hold a grenade. See [Lineups](#lineups) below.
 
 7. The console listener still works if you want a terminal instead of the window. Double-click `Start Suit-O.bat`, or:
 
@@ -169,15 +169,15 @@ Per-event cooldowns and a global gap (`rate_limit.min_interval_seconds`) keep it
 
 A broke freeze (under rifle-plus-helmet money: 4100 on CT, 3700 on T) uses the low-buy lines instead of the generic round-start line.
 
-## Smoke lineups
+## Lineups
 
-While you hold a smoke grenade, Suit-O can show one of your lineup screenshots in a small window at the corner of the screen (top-right by default). The window is a separate always-on-top surface. It does not read game memory, inject code, hook DirectX, or send keystrokes or mouse input into CS2. The only input it uses is the Game State Integration feed you already installed: the map, your team (T or CT), whether you are alive, the round phase, and the name of the weapon in your hand.
+While you hold a smoke, flash, molotov, incendiary, or HE grenade, Suit-O can show a matching lineup in a small window at the corner of the screen (top-right by default). Holding a flash shows flash lineups. The incendiary uses molotov lineups. The window is a separate always-on-top surface. It does not read game memory, inject code, hook DirectX, or send keystrokes or mouse input into CS2. The only input it uses is the Game State Integration feed you already installed: the map, your team (T or CT), whether you are alive, the round phase, and the name of the weapon in your hand.
 
 Run CS2 in **borderless windowed** or **windowed** mode so a normal desktop window can sit on top of the game. Fullscreen exclusive mode will cover it. Some third-party leagues and anti-cheats, including FACEIT, restrict overlays. This one is meant for Valve matchmaking and casual play.
 
-The card hides when the smoke is not in your hand, when you are dead, or when the round is over. A hotkey can hide it even while you are holding a smoke, and show it again the next time the trigger matches. Two more hotkeys cycle to the next or previous lineup. The defaults are `ctrl+shift+right`, `ctrl+shift+left`, and `ctrl+shift+h`. Saving them writes `config.local.yaml`. They must not be the same chord as `ptt.cs2_voice_key` or the reserved `ptt.keybind`. On Windows they are registered with the system so they work while CS2 is focused. They only change this overlay. They are not forwarded to the game. On Windows the overlay is click-through, so mouse clicks land on the game underneath.
+The card hides when that grenade is not in your hand, when you are dead, or when the round is over. A hotkey can hide it even while you are holding a grenade, and show it again the next time the trigger matches. Two more hotkeys cycle to the next or previous lineup of the same grenade. The defaults are `ctrl+shift+right`, `ctrl+shift+left`, and `ctrl+shift+h`. Saving them writes `config.local.yaml`. They must not be the same chord as `ptt.cs2_voice_key` or the reserved `ptt.keybind`. On Windows they are registered with the system so they work while CS2 is focused. They only change this overlay. They are not forwarded to the game. On Windows the overlay is click-through, so mouse clicks land on the game underneath.
 
-A pack lineup shows the stand photo and the aim photo side by side. The caption is the stand spot, the aim spot, and the throw type (for example `T ramp → Window (jumpthrow)`). **Smokes only**, on by default, hides flash, molotov, and HE cards from that overlay. Folder screenshots are smokes. The overlay still appears only while a smoke is in your hand.
+A pack lineup shows the stand photo and the aim photo side by side, with a small grenade icon. The caption is the stand spot, the aim spot, and the throw type (for example `T ramp → Window (jumpthrow)`). Folder screenshots are smokes, so they appear while you hold a smoke.
 
 No lineup images are shipped. Add your own PNGs:
 
@@ -187,9 +187,9 @@ lineups/<map>/<t|ct>/<name>.txt    optional caption; otherwise the filename is t
 lineups/<map>/<t|ct>/order.txt     optional order, one filename per line
 ```
 
-Use the CS2 map id, such as `de_dust2` or `de_mirage`. A short folder name (`dust2`) is also accepted. `t` and `ct` are the two sides. Empty folders for the current premier maps are already there. The **Lineups** tab can import PNGs for a map and side, rename them, set a caption, reorder them, and preview them. It also saves the card width, opacity, corner, monitor, and the smokes-only filter. Images you add stay on your machine; png and caption files under `lineups/` are gitignored.
+Use the CS2 map id, such as `de_dust2` or `de_mirage`. A short folder name (`dust2`) is also accepted. `t` and `ct` are the two sides. Empty folders for the current premier maps are already there. The **Lineups** tab lists every lineup in the imported pack. A map list, taken from the pack's `maps` array, shows each map with a count. Filters narrow that list by side, grenade, and status (`draft` or `verified`). Each grenade has a simple drawn icon in the list and on the overlay. The tab can also import PNGs for a map and side, rename them, set a caption, reorder them, and preview them. It saves the card width, opacity, corner, and monitor. Images you add stay on your machine; png and caption files under `lineups/` are gitignored.
 
-**Import pack** accepts a folder or a `.zip` in the version 1 format described by `lineups/pack.schema.json`. `lineups/example-pack/lineups.json` is an example with no photos. Each lineup has an id, map, side (`T` or `CT`), grenade (`smoke`, `flash`, `molotov`, or `he`), stand spot, aim spot, throw type, and paths to a stand photo and an aim photo. Suit-O checks the file, then copies it into `lineup-data/` (gitignored). Importing the same id again replaces that lineup and leaves the others. Those images belong to their creators and stay on your machine; do not commit them. A `setpos` string in the pack is practice-server text only. Suit-O never sends it to CS2.
+**Import pack** accepts a folder or a `.zip` of that whole folder. The format is version 1 in `lineups/pack.schema.json`. `lineups.json` is `{"version": 1, "maps": ["mirage", ...], "lineups": [...]}`. Each lineup has an id, map, side (`T` or `CT`), grenade (`smoke`, `flash`, `molotov`, or `he`), name, stand, aim, throw type, throw, covers, stand and aim image paths relative to the pack root, a `setpos` string, and status (`draft` or `verified`). `lineups/example-pack/lineups.json` is an example with no photos. Suit-O checks the file, then copies it into `lineup-data/` (gitignored). Importing the same id again replaces that lineup and leaves the others. Those images belong to their creators and stay on your machine; do not commit them. **Copy setpos** on the Lineups tab copies the practice-server console text. Suit-O never sends it to CS2.
 
 ## Speech log
 
@@ -237,6 +237,6 @@ Pushes to `main` run that pytest job on `windows-latest` (`.github/workflows/sui
 
 **Startup says the push-to-talk key matches the CS2 voice key.** Change `ptt.keybind` or clear it. Leave `ptt.cs2_voice_key` set to the key you actually use in game so the check stays honest. A lineup hotkey that uses that same chord is refused for the same reason.
 
-**The smoke overlay never appears.** Hold a smoke on a map that has PNGs for your side, and be alive before the round ends. CS2 needs to be borderless or windowed, not fullscreen exclusive. Check **Overlay enabled** on the Lineups tab. If you pressed the hide hotkey, press it again. FACEIT and similar clients may block any overlay; use this for Valve matchmaking and casual games.
+**The lineup overlay never appears.** Hold the matching grenade (a smoke for folder screenshots, a flash for flash lineups, and so on) on a map that has lineups for your side, and be alive before the round ends. CS2 needs to be borderless or windowed, not fullscreen exclusive. Check **Overlay enabled** on the Lineups tab. If you pressed the hide hotkey, press it again. FACEIT and similar clients may block any overlay; use this for Valve matchmaking and casual games.
 
 **You only want to develop on a machine without CS2.** `python -m suit_o.simulate` and `python -m pytest` are the whole loop. They stub speech and do not need the game or a sound device.

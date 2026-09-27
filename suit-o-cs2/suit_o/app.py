@@ -598,7 +598,7 @@ class SuitOApp:
 
     def lineup_toggle(self) -> DeckView:
         view = self.lineups.toggle()
-        self.note("Lineup overlay hidden" if view.hidden else "Lineup overlay will show with a smoke")
+        self.note("Lineup overlay hidden" if view.hidden else "Lineup overlay will show with the grenade you are holding")
         return view
 
     def save_lineup_preferences(

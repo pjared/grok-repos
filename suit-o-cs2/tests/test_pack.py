@@ -14,8 +14,10 @@ from suit_o.lineups.deck import LineupDeck
 from suit_o.lineups.library import LineupCard
 from suit_o.lineups.pack import (
     PackError,
+    filter_lineups,
     import_pack,
     load_pack_file,
+    map_counts,
     pack_cards,
     parse_pack,
 )
@@ -51,7 +53,24 @@ def test_schema_and_example_describe_version_one_without_images():
     example = json.loads(EXAMPLE.read_text(encoding="utf-8"))
     assert schema["properties"]["version"]["const"] == 1
     required = schema["$defs"]["lineup"]["required"]
-    assert "version" in schema["required"]
+    assert schema["required"] == ["version", "maps", "lineups"]
+    assert list(example) == ["version", "maps", "lineups"]
+    assert required == [
+        "id",
+        "map",
+        "side",
+        "grenade",
+        "name",
+        "stand",
+        "aim",
+        "throw_type",
+        "throw",
+        "covers",
+        "stand_image",
+        "aim_image",
+        "setpos",
+        "status",
+    ]
     assert set(example["lineups"][0]) == set(required)
     pack = parse_pack(example)
     assert pack.version == 1
@@ -101,6 +120,24 @@ def test_parse_rejects_a_bad_version_side_duplicate_or_escaping_path():
     else:
         raise AssertionError("a duplicate id was accepted")
 
+    bad_status = json.loads(EXAMPLE.read_text(encoding="utf-8"))
+    bad_status["lineups"][0]["status"] = "ready"
+    try:
+        parse_pack(bad_status)
+    except PackError as exc:
+        assert "status" in str(exc)
+    else:
+        raise AssertionError("status ready was accepted")
+
+    bad_grenade = json.loads(EXAMPLE.read_text(encoding="utf-8"))
+    bad_grenade["lineups"][0]["grenade"] = "incendiary"
+    try:
+        parse_pack(bad_grenade)
+    except PackError as exc:
+        assert "grenade" in str(exc)
+    else:
+        raise AssertionError("grenade incendiary was accepted")
+
     escaped = json.loads(EXAMPLE.read_text(encoding="utf-8"))
     escaped["lineups"][0]["stand_image"] = "../secret.png"
     try:
@@ -121,6 +158,10 @@ def test_folder_and_zip_import_merge_by_id_and_stay_in_the_library(tmp_path: Pat
     flash_aim = source / "images" / "flash-aim.png"
     _png(flash_stand)
     _png(flash_aim)
+    _png(source / "images" / "molotov-stand.png")
+    _png(source / "images" / "molotov-aim.png")
+    _png(source / "images" / "he-stand.png")
+    _png(source / "images" / "he-aim.png")
     document = {
         "version": 1,
         "maps": ["mirage"],
@@ -145,13 +186,34 @@ def test_folder_and_zip_import_merge_by_id_and_stay_in_the_library(tmp_path: Pat
                 throw_type="jumpthrow",
                 stand_image="images/flash-stand.png",
                 aim_image="images/flash-aim.png",
+                status="verified",
+            ),
+            _row(
+                id="mirage-t-molotov-ramp",
+                grenade="molotov",
+                name="Ramp molotov",
+                stand="T ramp",
+                aim="Palace",
+                throw_type="jumpthrow",
+                stand_image="images/molotov-stand.png",
+                aim_image="images/molotov-aim.png",
+            ),
+            _row(
+                id="mirage-t-he-ramp",
+                grenade="he",
+                name="Ramp HE",
+                stand="T ramp",
+                aim="Default",
+                throw_type="throw",
+                stand_image="images/he-stand.png",
+                aim_image="images/he-aim.png",
             ),
         ],
     }
     (source / "lineups.json").write_text(json.dumps(document), encoding="utf-8")
     library = tmp_path / "lineup-data"
     first = import_pack(source, library)
-    assert (first.added, first.replaced) == (3, 0)
+    assert (first.added, first.replaced) == (5, 0)
     assert (library / "lineups.json").is_file()
     assert (library / "images" / "window-stand.png").is_file()
     assert not (PROJECT_ROOT / "lineup-data" / "images").exists()
@@ -177,6 +239,8 @@ def test_folder_and_zip_import_merge_by_id_and_stay_in_the_library(tmp_path: Pat
         "mirage-t-smoke-window-example",
         "mirage-ct-smoke-connector",
         "mirage-t-flash-ramp",
+        "mirage-t-molotov-ramp",
+        "mirage-t-he-ramp",
     }
     assert by_id["mirage-t-smoke-window-example"].stand == "T ramp boxes"
     assert by_id["mirage-t-smoke-window-example"].caption() == "T ramp boxes → Window left (jumpthrow)"
@@ -192,39 +256,103 @@ def test_folder_and_zip_import_merge_by_id_and_stay_in_the_library(tmp_path: Pat
         raise AssertionError("a zip slip was accepted")
     assert not (tmp_path / "outside.txt").exists()
 
-    smokes = pack_cards(library, "de_mirage", "t", smokes_only=True)
+    smokes = pack_cards(library, "de_mirage", "t", grenade="smoke")
     assert [card.lineup_id for card in smokes] == ["mirage-t-smoke-window-example"]
     assert smokes[0].aim_path is not None
     assert smokes[0].aim_path.is_file()
-    everything = pack_cards(library, "de_mirage", "T", smokes_only=False)
-    assert {card.grenade for card in everything} == {"smoke", "flash"}
-    assert pack_cards(library, "de_mirage", "ct", smokes_only=True)[0].caption == (
+    assert smokes[0].setpos.startswith("setpos ")
+    assert smokes[0].status == "draft"
+    assert smokes[0].name == "Window smoke revised"
+    everything = pack_cards(library, "de_mirage", "T")
+    assert {card.grenade for card in everything} == {"smoke", "flash", "molotov", "he"}
+    assert pack_cards(library, "de_mirage", "ct", grenade="smoke")[0].caption == (
         "CT spawn → Connector (run-throw)"
     )
 
-    deck = LineupDeck(tmp_path / "folder-images", pack_dir=library)
-    deck.set_smokes_only(True)
-    shown = deck.observe(
-        _snap(team="T", map_name="de_mirage", round_phase="live", health=100, weapons={
-            "weapon_1": {"name": "weapon_smokegrenade", "state": "active"},
+    def holding(weapon: str):
+        return _snap(team="T", map_name="de_mirage", round_phase="live", health=100, weapons={
+            "weapon_1": {"name": weapon, "state": "active"},
         })
-    )
+
+    deck = LineupDeck(tmp_path / "folder-images", pack_dir=library)
+    shown = deck.observe(holding("weapon_smokegrenade"))
     assert shown.visible
     assert shown.total == 1
     assert shown.card is not None
     assert shown.card.lineup_id == "mirage-t-smoke-window-example"
+    assert shown.card.setpos.startswith("setpos ")
+    assert "setpos" not in shown.reason
     slots = overlay_images(shown.card, 320)
     assert [slot[1] for slot in slots] == [160, 160]
     assert slots[0][0] == shown.card.path
     assert slots[1][0] == shown.card.aim_path
 
     deck.set_smokes_only(False)
-    both = deck.observe(
-        _snap(team="T", map_name="de_mirage", round_phase="live", health=100, weapons={
-            "weapon_1": {"name": "weapon_smokegrenade", "state": "active"},
-        })
-    )
-    assert both.total == 2
+    still_smoke = deck.observe(holding("weapon_smokegrenade"))
+    assert still_smoke.total == 1
+    assert still_smoke.card is not None
+    assert still_smoke.card.grenade == "smoke"
+
+    flashed = deck.observe(holding("weapon_flashbang"))
+    assert flashed.visible
+    assert flashed.total == 1
+    assert flashed.card is not None
+    assert flashed.card.lineup_id == "mirage-t-flash-ramp"
+    assert flashed.reason == "flash"
+
+    burned = deck.observe(holding("weapon_incgrenade"))
+    assert burned.card is not None
+    assert burned.card.lineup_id == "mirage-t-molotov-ramp"
+    same = deck.observe(holding("weapon_molotov"))
+    assert same.card is not None
+    assert same.card.grenade == "molotov"
+
+    exploded = deck.observe(holding("weapon_hegrenade"))
+    assert exploded.card is not None
+    assert exploded.card.lineup_id == "mirage-t-he-ramp"
 
     lone = overlay_images(LineupCard(path=flash_stand, caption="only stand"), 300)
     assert lone == [(flash_stand, 300)]
+
+
+def test_filters_and_map_counts_follow_the_pack_document():
+    pack = parse_pack(
+        {
+            "version": 1,
+            "maps": ["mirage", "inferno", "ancient"],
+            "lineups": [
+                _row(),
+                _row(
+                    id="mirage-ct-flash",
+                    side="CT",
+                    grenade="flash",
+                    status="verified",
+                    name="CT flash",
+                ),
+                _row(
+                    id="inferno-t-molotov",
+                    map="inferno",
+                    grenade="molotov",
+                    status="verified",
+                ),
+                _row(id="inferno-t-he", map="inferno", grenade="he", status="draft"),
+                _row(id="nuke-t-smoke", map="nuke", grenade="smoke", status="draft"),
+            ],
+        }
+    )
+    assert map_counts(pack) == [("mirage", 2), ("inferno", 2), ("ancient", 0), ("nuke", 1)]
+    assert [item.id for item in filter_lineups(pack, map_name="de_mirage")] == [
+        "mirage-t-smoke-window-example",
+        "mirage-ct-flash",
+    ]
+    assert [item.id for item in filter_lineups(pack, side="CT")] == ["mirage-ct-flash"]
+    assert [item.id for item in filter_lineups(pack, grenade="he")] == ["inferno-t-he"]
+    assert [item.id for item in filter_lineups(pack, status="verified")] == [
+        "mirage-ct-flash",
+        "inferno-t-molotov",
+    ]
+    assert [item.id for item in filter_lineups(pack, map_name="inferno", side="T", grenade="molotov", status="verified")] == [
+        "inferno-t-molotov",
+    ]
+    assert filter_lineups(pack, map_name="ancient") == []
+    assert len(filter_lineups(pack)) == 5
