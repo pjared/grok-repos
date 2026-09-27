@@ -41,6 +41,7 @@ from suit_o.gui.status import (
     tone_color,
 )
 from suit_o.gui.global_hotkeys import GlobalHotkeys
+from suit_o.gui.clips import ClipsPanel
 from suit_o.gui.lineups import LineupsPanel
 from suit_o.gui.overlay import LineupOverlay, monitors_for
 from suit_o.gui.training import TrainingPanel
@@ -105,6 +106,17 @@ class SuitOWindow:
         self.notebook.add(voice, text="Voice")
         self.notebook.add(training, text="Voice Training")
         self.notebook.add(lineups, text="Lineups")
+        training.columnconfigure(0, weight=1)
+        training.rowconfigure(0, weight=1)
+        training_book = ttk.Notebook(training)
+        training_book.grid(row=0, column=0, sticky="nsew")
+        script = ttk.Frame(training_book, padding=(4, 8, 4, 4))
+        clips = ttk.Frame(training_book, padding=(4, 8, 4, 4))
+        training_book.add(script, text="Script")
+        training_book.add(clips, text="Clips")
+        script.columnconfigure(0, weight=1)
+        clips.columnconfigure(0, weight=1)
+        clips.rowconfigure(0, weight=1)
         self._build_listener(listener)
 
         self.volume = tk.DoubleVar(value=round(app.config.speech.volume * 100))
@@ -120,9 +132,14 @@ class SuitOWindow:
             paint_volume=self._paint_volume_caption,
         )
         self.training_panel = TrainingPanel(
-            training,
+            script,
             app,
             on_profile_built=self._on_profile_built,
+            schedule=lambda callback: self.root.after(0, callback),
+        )
+        self.clips_panel = ClipsPanel(
+            clips,
+            app,
             schedule=lambda callback: self.root.after(0, callback),
         )
         self.lineups_panel = LineupsPanel(lineups, app, on_saved=self._bind_lineup_hotkeys)

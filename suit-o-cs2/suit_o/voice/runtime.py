@@ -11,6 +11,8 @@ INSTALL_HINT = (
 
 MODEL_ID = "chatterbox"
 MODEL_NAME = "Chatterbox"
+# Chatterbox's default rate. Training clips are saved at this rate.
+MODEL_SAMPLE_RATE = 24000
 
 
 @dataclass(frozen=True)

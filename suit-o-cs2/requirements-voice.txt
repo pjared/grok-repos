@@ -12,3 +12,5 @@
 chatterbox-tts>=0.1.0
 sounddevice>=0.5.1
 numpy>=1.26
+# Bundles an ffmpeg binary, including on Windows, so Clips can read mp3, m4a, mp4, and mkv.
+imageio-ffmpeg>=0.5.1

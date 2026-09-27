@@ -147,27 +147,42 @@ class RecordingSession:
     def missing_lines(self) -> list[int]:
         return [index for index in range(self.total) if index not in self.takes]
 
-    def build(self, name: str, profiles_root: Path) -> VoiceProfile:
-        """Concatenate the takes into a profile. This does not run the model."""
+    def build(
+        self,
+        name: str,
+        profiles_root: Path,
+        *,
+        extra_wavs: list[Path] | None = None,
+    ) -> VoiceProfile:
+        """Concatenate script takes and included library clips. Does not run the model.
+
+        A full set of script lines still builds on its own. Included clips can
+        stand in for lines that were chopped from one long take instead.
+        """
 
         if self.state != "idle":
             raise SessionError("Stop recording or playback before building")
+        extras = [Path(path) for path in (extra_wavs or []) if Path(path).is_file()]
         missing = self.missing_lines()
-        if missing:
+        if missing and not extras:
             raise SessionError(
                 f"{len(missing)} script line(s) still need a recording "
                 f"({self.recorded_count} of {self.total})"
             )
-        if self.recorded_seconds < MIN_BUILD_SECONDS:
-            raise SessionError(
-                "Record about a minute of your own voice before building. "
-                f"This set is {self.recorded_seconds:.0f} seconds."
-            )
-        ordered = [self.takes[index].wav_path for index in range(self.total)]
+        ordered = [self.takes[index].wav_path for index in range(self.total) if index in self.takes]
+        ordered.extend(extras)
+        if not ordered:
+            raise SessionError("Record the script or include clips from the library before building.")
         work = self.directory / "build"
         work.mkdir(parents=True, exist_ok=True)
         reference = work / "reference.wav"
         samples, rate = concat_wavs(ordered, reference)
+        duration = len(samples) / float(rate) if rate else 0.0
+        if duration < MIN_BUILD_SECONDS:
+            raise SessionError(
+                "Record about a minute of your own voice before building. "
+                f"This set is {duration:.0f} seconds."
+            )
         prompt = work / "prompt.wav"
         prompt_samples = excerpt(samples, rate, PROMPT_SECONDS)
         write_wav(prompt, prompt_samples, rate)
@@ -177,7 +192,7 @@ class RecordingSession:
                 name,
                 reference,
                 prompt,
-                duration_seconds=len(samples) / float(rate),
+                duration_seconds=duration,
                 sample_rate=rate,
             )
         except ProfileError as exc:

@@ -262,8 +262,11 @@ class TrainingPanel:
             messagebox.showerror("Suit-O", "Stop recording or playback before building")
             return
         name = self.name.get().strip() or "Suit-O"
+        from suit_o.voice.library import included_wavs
+
+        extras = included_wavs(self.app.voices_dir, name)
         try:
-            profile = self.session.build(name, self.app.voices_dir)
+            profile = self.session.build(name, self.app.voices_dir, extra_wavs=extras)
         except SessionError as exc:
             messagebox.showerror("Suit-O", str(exc))
             return
@@ -271,10 +274,12 @@ class TrainingPanel:
         extra = ""
         if not self.runtime.installed:
             extra = " " + self.runtime.summary
+        clip_note = f"Used {len(extras)} library clip(s). " if extras else ""
         self.status.configure(
             text=(
                 f"Saved {profile.name} ({profile.duration_seconds:.0f}s). "
                 f"It is in the Voice tab as {profile.label}. "
+                f"{clip_note}"
                 "Every stock line is rendered to audio for this voice. "
                 "Matches play those files only. Preview is the only live synthesis."
                 + extra

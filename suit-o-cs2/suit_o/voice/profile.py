@@ -156,9 +156,10 @@ def write_profile(
     base = voices_root(root)
     folder = base / slug
     suffix = 2
-    while folder.exists() and not (folder / "profile.yaml").is_file():
-        folder = base / f"{slug}-{suffix}"
-        suffix += 1
+    if folder.exists() and not (folder / "profile.yaml").is_file() and not _reusable_voice_folder(folder):
+        while folder.exists():
+            folder = base / f"{slug}-{suffix}"
+            suffix += 1
     if folder.exists() and (folder / "profile.yaml").is_file():
         existing = load_profile(folder)
         if existing.name.lower() != name.strip().lower():
@@ -188,3 +189,12 @@ def write_profile(
     (folder / "profile.yaml").write_text(text, encoding="utf-8")
     (folder / "cache").mkdir(exist_ok=True)
     return load_profile(folder)
+
+
+def _reusable_voice_folder(folder: Path) -> bool:
+    """A clip library can exist before profile.yaml. Build voice should keep it."""
+
+    if not folder.is_dir():
+        return False
+    names = {item.name for item in folder.iterdir()}
+    return names <= {"clips"}
