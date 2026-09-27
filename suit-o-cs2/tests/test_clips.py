@@ -38,21 +38,21 @@ def _silence(seconds: float) -> list[float]:
 
 def test_silence_split_respects_gap_length_and_minimum_clip():
     separated = _tone(0.8) + _silence(0.5) + _tone(0.8)
-    regions = split_on_silence(separated, RATE, threshold=0.02, min_length=0.3, min_silence=0.3)
+    regions = split_on_silence(separated, RATE, threshold=55, min_length=0.3, min_silence=0.3)
     assert len(regions) == 2
     assert regions[0][0] == 0
     assert 0.7 <= regions[0][1] <= 0.9
     assert regions[1][0] >= 1.2
 
     joined = _tone(0.8) + _silence(0.1) + _tone(0.8)
-    assert len(split_on_silence(joined, RATE, threshold=0.02, min_length=0.3, min_silence=0.3)) == 1
+    assert len(split_on_silence(joined, RATE, threshold=55, min_length=0.3, min_silence=0.3)) == 1
 
     blip = _tone(0.1) + _silence(0.5) + _tone(0.8)
-    kept = split_on_silence(blip, RATE, threshold=0.02, min_length=0.3, min_silence=0.3)
+    kept = split_on_silence(blip, RATE, threshold=55, min_length=0.3, min_silence=0.3)
     assert len(kept) == 1
     assert kept[0][1] - kept[0][0] >= 0.7
 
-    assert split_on_silence(separated, RATE, threshold=1.0, min_length=0.3, min_silence=0.2) == []
+    assert split_on_silence(separated, RATE, threshold=120, min_length=0.3, min_silence=0.2) == []
     assert split_on_silence([], RATE) == []
 
     merged = merge_regions([(0.0, 1.0), (1.2, 2.0), (3.0, 4.0)], [0, 2])

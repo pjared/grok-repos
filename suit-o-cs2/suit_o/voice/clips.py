@@ -1,14 +1,21 @@
-"""Cut a long recording into training clips. No GUI and no ffmpeg."""
+"""Cut a long recording into training clips.
+
+Silence boundaries come from auditok. Resampling and peak normalization use
+librosa, which is how Chatterbox loads a reference clip. No GUI here.
+"""
 
 from __future__ import annotations
 
-import math
 import wave
 from array import array
 from pathlib import Path
 
 from suit_o.voice.runtime import MODEL_SAMPLE_RATE
-from suit_o.voice.wav import resample, write_wav
+from suit_o.voice.wav import write_wav
+
+_VOICE_INSTALL = (
+    "From the suit-o-cs2 folder run: python -m pip install -r requirements-voice.txt"
+)
 
 # Peak after normalize. Leaves a little headroom so 16-bit PCM does not clip.
 TARGET_PEAK = 0.89
@@ -22,54 +29,42 @@ def split_on_silence(
     samples: list[float],
     sample_rate: int,
     *,
-    threshold: float = 0.02,
+    threshold: float = 55,
     min_length: float = 0.4,
     min_silence: float = 0.3,
 ) -> list[tuple[float, float]]:
-    """Speech regions as ``(start, end)`` seconds.
+    """Speech regions as ``(start, end)`` seconds, from auditok.
 
-    A gap counts as a split only when the silence lasts at least
+    ``threshold`` is auditok's energy threshold: a higher value keeps only
+    louder audio. A gap splits a region when the silence lasts at least
     ``min_silence`` seconds. Regions shorter than ``min_length`` are dropped.
-    ``threshold`` is an RMS level from 0 to 1.
     """
 
     if sample_rate < 1 or not samples:
         return []
-    level = max(0.0, float(threshold))
-    window = max(1, int(sample_rate * 0.02))
-    flags: list[bool] = []
-    for start in range(0, len(samples), window):
-        chunk = samples[start : start + window]
-        if not chunk:
-            break
-        energy = sum(sample * sample for sample in chunk) / len(chunk)
-        flags.append(math.sqrt(energy) < level)
-    if not flags:
-        return []
-    gap_windows = max(1, int(math.ceil(max(0.0, min_silence) * sample_rate / window)))
-    regions: list[tuple[int, int]] = []
-    speech_start: int | None = None
-    silent_run = 0
-    for index, silent in enumerate(flags):
-        if silent:
-            silent_run += 1
-            if speech_start is not None and silent_run >= gap_windows:
-                regions.append((speech_start, index - silent_run + 1))
-                speech_start = None
-        else:
-            silent_run = 0
-            if speech_start is None:
-                speech_start = index
-    if speech_start is not None:
-        regions.append((speech_start, len(flags)))
-    seconds: list[tuple[float, float]] = []
-    minimum = max(0.0, float(min_length))
-    for start, end in regions:
-        begin = start * window / sample_rate
-        finish = min(len(samples), end * window) / sample_rate
-        if finish - begin >= minimum:
-            seconds.append((begin, finish))
-    return seconds
+    try:
+        import auditok
+        import numpy as np
+    except ImportError as exc:
+        raise ClipError(f"Auto-split needs auditok. {_VOICE_INSTALL}") from exc
+    audio = np.clip(np.asarray(samples, dtype=np.float64), -1.0, 1.0)
+    pcm = (audio * 32767.0).astype(np.int16).tobytes()
+    try:
+        found = auditok.split(
+            pcm,
+            min_dur=max(0.01, float(min_length)),
+            max_dur=None,
+            max_silence=max(0.0, float(min_silence)),
+            max_trailing_silence=0,
+            strict_min_dur=True,
+            energy_threshold=float(threshold),
+            sampling_rate=int(sample_rate),
+            sample_width=2,
+            channels=1,
+        )
+    except (ValueError, OSError, RuntimeError) as exc:
+        raise ClipError(f"Could not split that recording. {exc}") from exc
+    return [(float(region.start), float(region.end)) for region in found]
 
 
 def delete_regions(regions: list[tuple[float, float]], indexes: list[int]) -> list[tuple[float, float]]:
@@ -94,15 +89,23 @@ def merge_regions(regions: list[tuple[float, float]], indexes: list[int]) -> lis
 
 
 def normalize_mono(samples: list[float], *, peak: float = TARGET_PEAK) -> list[float]:
-    """Scale the loudest sample to ``peak``. Silence stays silence."""
+    """Peak-normalize with librosa, then leave headroom at ``peak``.
+
+    Chatterbox loads a reference with ``librosa.load(..., sr=24000)``. This is
+    the same library, with the peak held under full scale so 16-bit WAV does
+    not clip. Silence stays silence.
+    """
 
     if not samples:
         return []
-    loudest = max(abs(float(sample)) for sample in samples)
+    librosa, np = _librosa()
+    audio = np.asarray(samples, dtype=np.float32)
+    loudest = float(np.max(np.abs(audio))) if audio.size else 0.0
     if loudest < 1e-8:
         return [0.0] * len(samples)
-    gain = float(peak) / loudest
-    return [max(-1.0, min(1.0, float(sample) * gain)) for sample in samples]
+    normalized = librosa.util.normalize(audio, norm=np.inf)
+    limited = np.clip(normalized * float(peak), -1.0, 1.0)
+    return [float(sample) for sample in limited]
 
 
 def slice_samples(samples: list[float], sample_rate: int, start: float, end: float) -> list[float]:
@@ -131,8 +134,13 @@ def export_clip(
     if not piece:
         raise ClipError("That clip is empty")
     if sample_rate != target_rate:
-        new_length = max(1, int(round(len(piece) * target_rate / sample_rate)))
-        piece = resample(piece, new_length)
+        librosa, np = _librosa()
+        converted = librosa.resample(
+            np.asarray(piece, dtype=np.float32),
+            orig_sr=int(sample_rate),
+            target_sr=int(target_rate),
+        )
+        piece = [float(sample) for sample in converted]
     piece = normalize_mono(piece)
     write_wav(dest, piece, target_rate)
     return piece, target_rate
@@ -187,6 +195,15 @@ def load_media(path: Path) -> tuple[list[float], int]:
         dest = Path(folder) / "extracted.wav"
         extract_audio(source, dest, sample_rate=MODEL_SAMPLE_RATE)
         return read_wav_mono(dest)
+
+
+def _librosa():
+    try:
+        import librosa
+        import numpy as np
+    except ImportError as exc:
+        raise ClipError(f"Saving a clip needs librosa. {_VOICE_INSTALL}") from exc
+    return librosa, np
 
 
 def read_wav_mono(path: Path) -> tuple[list[float], int]:

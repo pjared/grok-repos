@@ -13,4 +13,11 @@ chatterbox-tts>=0.1.0
 sounddevice>=0.5.1
 numpy>=1.26
 # Bundles an ffmpeg binary, including on Windows, so Clips can read mp3, m4a, mp4, and mkv.
+# BSD-2. https://github.com/imageio/imageio-ffmpeg
 imageio-ffmpeg>=0.5.1
+# Silence boundaries for Clips. MIT. https://github.com/amsehili/auditok
+auditok>=0.5.0
+# Chatterbox loads a reference with librosa at 24000 Hz. ISC. https://librosa.org
+librosa>=0.10.0
+# Waveform on the Clips page. Matplotlib license (BSD-style). https://matplotlib.org
+matplotlib>=3.8

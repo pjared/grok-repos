@@ -1,7 +1,8 @@
 """Clips page on Voice Training: cut one long take into a clip library.
 
-Playback uses the Listener tab's output device. It is never a microphone.
-Opening a file is the only ffmpeg step. Cutting and the library are local.
+The waveform is a Matplotlib figure. Silence splits go through auditok, and
+saved clips are resampled with librosa. Playback uses the Listener tab's
+output device and is never a microphone.
 """
 
 from __future__ import annotations
@@ -82,12 +83,11 @@ class ClipsPanel:
         self.source_label = ttk.Label(source, text="No file open.")
         self.source_label.grid(row=0, column=3, sticky="w", padx=(8, 0))
 
-        self.wave = tk.Canvas(parent, height=120, bg="#1b1b1b", highlightthickness=0)
+        self._ax = None
+        self._mpl = None
+        self._env: tuple | None = None
+        self.wave = self._build_waveform(parent)
         self.wave.grid(row=2, column=0, sticky="ew", pady=(4, 4))
-        self.wave.bind("<Button-1>", self._press)
-        self.wave.bind("<B1-Motion>", self._drag)
-        self.wave.bind("<ButtonRelease-1>", self._release)
-        self.wave.bind("<Configure>", lambda _event: self._draw())
         for key, handler in (
             ("<space>", self._toggle_play),
             ("<Left>", lambda _event: self._seek(-_SEEK)),
@@ -131,9 +131,9 @@ class ClipsPanel:
 
         split = ttk.Frame(parent)
         split.grid(row=5, column=0, sticky="ew")
-        ttk.Label(split, text="Silence").grid(row=0, column=0, sticky="w")
-        self.threshold = tk.DoubleVar(value=0.02)
-        ttk.Scale(split, from_=0.005, to=0.2, variable=self.threshold, length=120).grid(row=0, column=1, padx=(6, 8))
+        ttk.Label(split, text="Energy").grid(row=0, column=0, sticky="w")
+        self.threshold = tk.DoubleVar(value=55)
+        ttk.Scale(split, from_=35, to=80, variable=self.threshold, length=120).grid(row=0, column=1, padx=(6, 8))
         ttk.Label(split, text="Min length").grid(row=0, column=2, sticky="w")
         self.min_length = tk.DoubleVar(value=0.4)
         ttk.Scale(split, from_=0.2, to=2.0, variable=self.min_length, length=120).grid(row=0, column=3, padx=(6, 8))
@@ -313,12 +313,16 @@ class ClipsPanel:
         if not self.samples:
             self.status.configure(text="Open a recording first.")
             return
-        self._regions = split_on_silence(
-            self.samples,
-            self.rate,
-            threshold=float(self.threshold.get()),
-            min_length=float(self.min_length.get()),
-        )
+        try:
+            self._regions = split_on_silence(
+                self.samples,
+                self.rate,
+                threshold=float(self.threshold.get()),
+                min_length=float(self.min_length.get()),
+            )
+        except ClipError as exc:
+            self.status.configure(text=str(exc))
+            return
         self._paint_regions()
         self.status.configure(text=f"Proposed {len(self._regions)} clip(s). Accept, merge, or delete them.")
 
@@ -502,18 +506,50 @@ class ClipsPanel:
             return 0.0
         return len(self.samples) / float(self.rate)
 
+    def _build_waveform(self, parent: ttk.Frame) -> tk.Widget:
+        try:
+            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+            from matplotlib.figure import Figure
+        except ImportError:
+            return ttk.Label(
+                parent,
+                text=(
+                    "The waveform needs Matplotlib. From the suit-o-cs2 folder run: "
+                    "python -m pip install -r requirements-voice.txt"
+                ),
+                wraplength=820,
+            )
+        figure = Figure(figsize=(8, 1.35), dpi=80, facecolor="#1b1b1b")
+        self._ax = figure.add_axes((0, 0, 1, 1))
+        canvas = FigureCanvasTkAgg(figure, master=parent)
+        self._mpl = canvas
+        widget = canvas.get_tk_widget()
+        widget.configure(height=130, background="#1b1b1b", highlightthickness=0)
+        canvas.mpl_connect("button_press_event", self._press)
+        canvas.mpl_connect("motion_notify_event", self._drag)
+        canvas.mpl_connect("button_release_event", self._release)
+        return widget
+
     def _rebuild_peaks(self) -> None:
         samples = self.samples
-        if not samples:
-            self._peaks = []
+        if not samples or self.rate < 1:
+            self._env = None
             return
+        try:
+            import numpy as np
+        except ImportError:
+            self._env = None
+            return
+        audio = np.asarray(samples, dtype=np.float32)
         buckets = 2400
-        size = max(1, len(samples) // buckets)
-        peaks: list[tuple[float, float]] = []
-        for start in range(0, len(samples), size):
-            chunk = samples[start : start + size]
-            peaks.append((min(chunk), max(chunk)))
-        self._peaks = peaks
+        size = max(1, int(len(audio) // buckets))
+        usable = (len(audio) // size) * size
+        if usable < size:
+            self._env = None
+            return
+        shaped = audio[:usable].reshape(-1, size)
+        times = (np.arange(shaped.shape[0]) * size + size / 2) / float(self.rate)
+        self._env = (times, shaped.min(axis=1), shaped.max(axis=1))
 
     def _paint_regions(self) -> None:
         self.regions.delete(0, "end")
@@ -536,32 +572,49 @@ class ClipsPanel:
             self.play()
         return "break"
 
-    def _press(self, event: tk.Event) -> None:
-        self.wave.focus_set()
-        self._drag_origin = (float(event.x), self._time_at(event.x))
+    def _event_time(self, event: object) -> float | None:
+        xdata = getattr(event, "xdata", None)
+        if xdata is not None:
+            return float(xdata)
+        x = getattr(event, "x", None)
+        if x is None:
+            return None
+        return self._time_at(int(x))
 
-    def _drag(self, event: tk.Event) -> None:
+    def _press(self, event: object) -> None:
+        self.wave.focus_set()
+        when = self._event_time(event)
+        if when is None:
+            return
+        self._drag_origin = (float(getattr(event, "x", 0) or 0), when)
+
+    def _drag(self, event: object) -> None:
         if self._drag_origin is None:
             return
-        if abs(event.x - self._drag_origin[0]) < 4:
+        when = self._event_time(event)
+        if when is None:
+            return
+        if abs(float(getattr(event, "x", 0) or 0) - self._drag_origin[0]) < 4:
             return
         start = self._drag_origin[1]
-        current = self._time_at(event.x)
-        self.in_point = min(start, current)
-        self.out_point = max(start, current)
+        self.in_point = min(start, when)
+        self.out_point = max(start, when)
         if self.out_point - self.in_point < 0.05:
             self.out_point = min(self._duration(), self.in_point + 0.05)
         self._draw()
 
-    def _release(self, event: tk.Event) -> None:
+    def _release(self, event: object) -> None:
         origin = self._drag_origin
         self._drag_origin = None
         if origin is None:
             return
-        if abs(event.x - origin[0]) < 4:
+        when = self._event_time(event)
+        if when is None:
+            return
+        if abs(float(getattr(event, "x", 0) or 0) - origin[0]) < 4:
             was = self._playing
             self.pause()
-            self.position = self._time_at(event.x)
+            self.position = when
             self._draw()
             if was:
                 self.play()
@@ -589,52 +642,30 @@ class ClipsPanel:
         self._draw()
 
     def _draw(self) -> None:
-        canvas = self.wave
-        try:
-            width = max(1, int(canvas.winfo_width()))
-            height = max(1, int(canvas.winfo_height()))
-        except tk.TclError:
-            return
-        canvas.delete("all")
         duration = self._duration()
         if self.view_span <= 0:
             self.view_span = duration or 1.0
-        mid = height / 2
-        play_x = self._x_for(self.position, width)
-        in_x = self._x_for(self.in_point, width)
-        out_x = self._x_for(self.out_point, width)
-        if out_x > in_x:
-            canvas.create_rectangle(in_x, 0, out_x, height, fill="#16351f", outline="")
-        if self._peaks and duration > 0:
-            self._draw_span(canvas, width, height, mid)
-        canvas.create_line(in_x, 0, in_x, height, fill="#7dcea0")
-        canvas.create_line(out_x, 0, out_x, height, fill="#f5b041")
-        canvas.create_line(play_x, 0, play_x, height, fill="#f2f2f2")
         self.time_label.configure(
             text=f"{self.position:.2f} / {duration:.2f}   in {self.in_point:.2f}  out {self.out_point:.2f}"
         )
-
-    def _draw_span(self, canvas: tk.Canvas, width: int, height: int, mid: float) -> None:
-        duration = self._duration()
-        count = len(self._peaks)
-        if count < 1 or duration <= 0:
+        axis = self._ax
+        canvas = self._mpl
+        if axis is None or canvas is None:
             return
-        visible_start = self.view_start / duration
-        visible_end = min(1.0, (self.view_start + self.view_span) / duration)
-        first = int(visible_start * count)
-        last = max(first + 1, int(visible_end * count))
-        last = min(count, last)
-        span = max(1, last - first)
-        for pixel in range(width):
-            index = first + int(pixel / width * span)
-            index = min(count - 1, index)
-            low, high = self._peaks[index]
-            y1 = mid - max(-1.0, min(1.0, high)) * (mid - 4)
-            y2 = mid - max(-1.0, min(1.0, low)) * (mid - 4)
-            canvas.create_line(pixel, y1, pixel, y2, fill="#7eb6ff")
-
-    def _x_for(self, seconds: float, width: int) -> int:
-        if self.view_span <= 0:
-            return 0
-        fraction = (seconds - self.view_start) / self.view_span
-        return int(min(width - 1, max(0, fraction * width)))
+        axis.clear()
+        axis.set_facecolor("#1b1b1b")
+        axis.set_xlim(self.view_start, self.view_start + self.view_span)
+        axis.set_ylim(-1.05, 1.05)
+        axis.axis("off")
+        if self.out_point > self.in_point:
+            axis.axvspan(self.in_point, self.out_point, color="#16351f", zorder=0)
+        if self._env is not None and duration > 0:
+            times, lows, highs = self._env
+            axis.fill_between(times, lows, highs, color="#7eb6ff", linewidth=0, zorder=1)
+        axis.axvline(self.in_point, color="#7dcea0", linewidth=1, zorder=2)
+        axis.axvline(self.out_point, color="#f5b041", linewidth=1, zorder=2)
+        axis.axvline(self.position, color="#f2f2f2", linewidth=1, zorder=3)
+        try:
+            canvas.draw_idle()
+        except tk.TclError:
+            return
