@@ -10,6 +10,8 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+## [0.19.2] - 2026-09-27
+
 ### Fixed
 
 - A lineup pack with `null` in an optional field imports. `notes`, `source_url`, `source_timestamp`, `second_source_url`, and `verified_by_second_source` treat `null` the same as a missing key. (`6dfd1ea`)
