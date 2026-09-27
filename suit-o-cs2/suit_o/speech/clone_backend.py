@@ -51,6 +51,8 @@ class CloneSpeechBackend(SpeechBackend):
         self._closed = False
         self._live = False
         self._warmer: threading.Thread | None = None
+        self._warming = False
+        self._pending_lines: list[str] | None = None
         self._writing: set[Path] = set()
         self.synthesized: list[str] = []
         self.fallback_spoken: list[str] = []
@@ -89,6 +91,8 @@ class CloneSpeechBackend(SpeechBackend):
         Runs off the speech thread. Pauses while a match line is playing and
         drops the model so that playback does not keep the GPU. Calling this
         again after a tuning or script change fills whatever is missing.
+        A render that is already running keeps that work; a second thread is
+        not started.
         """
 
         pending = []
@@ -99,8 +103,28 @@ class CloneSpeechBackend(SpeechBackend):
                 seen.add(cleaned)
                 pending.append(cleaned)
 
-        def run() -> None:
-            for line in pending:
+        with self._lock:
+            self._pending_lines = pending
+            warmer = self._warmer
+            if not self._warming:
+                self._warming = True
+                warmer = threading.Thread(target=self._warm, name="suit-o-voice-cache", daemon=True)
+                self._warmer = warmer
+                warmer.start()
+        if wait and warmer is not None:
+            warmer.join()
+
+    def _warm(self) -> None:
+        """Render queued lines on the one cache thread. A newer list replaces the queue."""
+
+        while not self._closed:
+            with self._lock:
+                batch = self._pending_lines
+                self._pending_lines = None
+                if not batch:
+                    self._warming = False
+                    return
+            for line in batch:
                 if self._closed:
                     break
                 while (self._urgent.is_set() or self._round_live.is_set()) and not self._closed:
@@ -112,12 +136,13 @@ class CloneSpeechBackend(SpeechBackend):
                     self._write_cache(line, self._snapshot())
                 except Exception:
                     logger.exception("Could not pre-render a stock line")
-            _release_model()
-
-        self._warmer = threading.Thread(target=run, name="suit-o-voice-cache", daemon=True)
-        self._warmer.start()
-        if wait:
-            self._warmer.join()
+            else:
+                _release_model()
+                continue
+            break
+        _release_model()
+        with self._lock:
+            self._warming = False
 
     def wait_prerender(self, timeout: float) -> bool:
         warmer = self._warmer

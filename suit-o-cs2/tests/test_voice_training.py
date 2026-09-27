@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import threading
 from pathlib import Path
 
 from suit_o.app import SuitOApp
@@ -230,6 +231,48 @@ def test_match_playback_uses_only_prerendered_files(tmp_path: Path):
     assert len(calls) == before + 1
     assert calls[-1] == "strong:preview clone"
     assert fallback.spoken == ["Not in the cache"]
+
+
+def test_a_second_prerender_does_not_start_another_thread(tmp_path: Path, monkeypatch):
+    voices = tmp_path / "voices"
+    _write_profile(voices)
+    calls: list[str] = []
+
+    def synthesize(text: str, prompt: Path, emphasis: str):
+        calls.append(text)
+        return [0.2, -0.2], 8000
+
+    settings = SpeechConfig(
+        backend="clone",
+        voice="Suit-O",
+        rate=185,
+        volume=0.5,
+        output_device="Headphones",
+        voices_dir=str(voices),
+    )
+    created: list[threading.Thread] = []
+    original = threading.Thread
+
+    def track(*args, **kwargs):
+        thread = original(*args, **kwargs)
+        created.append(thread)
+        return thread
+
+    monkeypatch.setattr(threading, "Thread", track)
+    backend = CloneSpeechBackend(
+        settings,
+        synthesizer=synthesize,
+        player=lambda samples, rate, device, volume, cancel: True,
+        fallback=_Fallback(),
+    )
+    backend.set_round_live(True)
+    backend.prerender(["Hello"], wait=False)
+    backend.prerender(["Hello again"], wait=False)
+    assert len(created) == 1
+    assert created[0].name == "suit-o-voice-cache"
+    backend.set_round_live(False)
+    assert backend.wait_prerender(2) is True
+    assert calls == ["Hello again"] or calls == ["Hello", "Hello again"]
 
 
 def test_prerender_waits_while_the_round_is_live(tmp_path: Path):
