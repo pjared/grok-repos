@@ -10,6 +10,8 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+## [0.19.3] - 2026-09-27
+
 ### Fixed
 
 - The Lineups detail panel keeps the stand and aim pictures at a fixed size. Notes stay in the pack and are not shown there. A Source link opens the lineup's URL when one is set. (`7080e63`)
