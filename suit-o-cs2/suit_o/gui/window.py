@@ -45,11 +45,10 @@ from suit_o.gui.status import (
 from suit_o.gui.drops import desktop_root
 from suit_o.gui.global_hotkeys import GlobalHotkeys
 from suit_o.gui.chat import ChatPanel
-from suit_o.gui.clips import ClipsPanel
 from suit_o.gui.lineups import LineupsPanel
 from suit_o.gui.news import WhatsNew
 from suit_o.gui.overlay import LineupOverlay, monitors_for
-from suit_o.gui.training import TrainingPanel
+from suit_o.gui.ui_queue import UiQueue
 from suit_o.gui.voice import VoicePanel
 from suit_o.preferences import clamp_volume
 from suit_o.speech.devices import WINDOWS_DEFAULT_LABEL
@@ -86,6 +85,8 @@ class SuitOWindow:
         app._on_settings_saved = self._ignore_own_save
 
         self.root = desktop_root()
+        self._ui = UiQueue()
+        self._ui.bind(self.root)
         self.root.title("Suit-O")
         self.root.geometry("860x900")
         self.root.minsize(720, 760)
@@ -148,32 +149,75 @@ class SuitOWindow:
             hold_updates=self._hold_volume,
             paint_volume=self._paint_volume_caption,
         )
-        self.training_panel = TrainingPanel(
-            script,
-            app,
-            on_profile_built=self._on_profile_built,
-            schedule=lambda callback: self.root.after(0, callback),
-            on_long_file=self._open_long_recording,
-        )
-        self.clips_panel = ClipsPanel(
-            clips,
-            app,
-            schedule=lambda callback: self.root.after(0, callback),
-        )
+        self.training_panel = None
+        self.clips_panel = None
+        self._load_voice_panels(script, clips, training)
         self.lineups_panel = LineupsPanel(lineups, app, on_saved=self._bind_lineup_hotkeys)
         self.chat_panel = ChatPanel(
             chat,
             app,
-            schedule=lambda callback: self.root.after(0, callback),
+            schedule=self._ui.call,
         )
         self.overlay: LineupOverlay | None = None
         self.hotkeys = GlobalHotkeys()
         self._paint_volume_caption(app.config.speech.volume)
         self._ui_ready = True
 
+    def _load_voice_panels(self, script: ttk.Frame, clips: ttk.Frame, training: ttk.Frame) -> None:
+        """Import voice and clip panels after the window exists.
+
+        A broken optional install must not stop the window from opening.
+        Those tabs are greyed out instead.
+        """
+
+        try:
+            from suit_o.gui.training import TrainingPanel
+
+            self.training_panel = TrainingPanel(
+                script,
+                self.app,
+                on_profile_built=self._on_profile_built,
+                schedule=self._ui.call,
+                on_long_file=self._open_long_recording,
+            )
+        except Exception:
+            logger.exception("Voice Training could not load")
+            self.training_panel = None
+            self._mark_unavailable(
+                script,
+                "Voice Training is unavailable. The optional voice packages failed to load.",
+            )
+            self.training_book.tab(script, text="Script (unavailable)", state="disabled")
+        try:
+            from suit_o.gui.clips import ClipsPanel
+
+            self.clips_panel = ClipsPanel(
+                clips,
+                self.app,
+                schedule=self._ui.call,
+            )
+        except Exception:
+            logger.exception("Clips could not load")
+            self.clips_panel = None
+            self._mark_unavailable(
+                clips,
+                "Clips are unavailable. The optional clip packages failed to load.",
+            )
+            self.training_book.tab(clips, text="Clips (unavailable)", state="disabled")
+        if self.training_panel is None and self.clips_panel is None:
+            self.notebook.tab(training, text="Voice Training (unavailable)", state="disabled")
+
+    def _mark_unavailable(self, parent: ttk.Frame, message: str) -> None:
+        ttk.Label(parent, text=message, wraplength=680, justify="left").grid(
+            row=0, column=0, sticky="ew"
+        )
+
     def _open_long_recording(self, path) -> None:
         """A recording of 30 seconds or more is cut on the Clips page."""
 
+        if self.training_panel is None or self.clips_panel is None:
+            messagebox.showinfo("Suit-O", "Clips are unavailable.")
+            return
         name = self.training_panel.name.get().strip() or "Suit-O"
         self.clips_panel.voice.set(name)
         self.clips_panel.reload_library()
@@ -576,7 +620,7 @@ class SuitOWindow:
             pip_error = f"Update failed. {exc}"
         if self._closed:
             return
-        self.root.after(0, lambda: self._finish_update(outcome, pip_error))
+        self._ui.call(lambda: self._finish_update(outcome, pip_error))
 
     def _finish_update(self, outcome, pip_error: str | None) -> None:
         self._updating = False
@@ -592,8 +636,25 @@ class SuitOWindow:
         self.update_status.configure(text=outcome.message)
         self.app.note(outcome.message)
         if outcome.ok and outcome.changed:
+            self._remember_installed(outcome.requirements)
             self._update_previous_version = self._version_text
             self._restart_or_defer("Reloaded")
+
+    def _remember_installed(self, paths) -> None:
+        """Keep optional requirement names that this update actually installed."""
+
+        from pathlib import Path
+
+        from suit_o.local_config import remember_installed_requirements
+        from suit_o.update import OPTIONAL_REQUIREMENTS
+
+        names = [Path(item).name for item in paths if Path(item).name in OPTIONAL_REQUIREMENTS]
+        if not names or self.app.config_path is None:
+            return
+        try:
+            remember_installed_requirements(self.app.config_path, names)
+        except OSError:
+            logger.debug("Could not record installed optional requirements", exc_info=True)
 
     def _previous_version_for_restart(self) -> str:
         """The version Update replaced, when this restart follows a pull."""

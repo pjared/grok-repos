@@ -25,7 +25,7 @@ _model = None
 def whisper_available() -> bool:
     try:
         import faster_whisper  # noqa: F401
-    except ImportError:
+    except Exception:
         return False
     return True
 

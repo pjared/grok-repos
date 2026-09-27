@@ -10,6 +10,19 @@ New notes go under `## [Unreleased]`. Every push to `main` updates this file in 
 
 ## [Unreleased]
 
+### Added
+
+- Lineup photos can be JPEG or WebP as well as PNG. Pillow is part of the base install.
+- The first launch writes a random GSI token into `config.local.yaml` and, when the CS2 cfg is already outside the repo, into that file. The sample token stays in git.
+
+### Fixed
+
+- Voice pre-rendering waits while GSI says the round phase is live, then continues.
+- A voice cache file that is incomplete or unreadable uses the Windows voice.
+- Window updates from worker threads run on the main thread.
+- A broken PyTorch install greys out Voice Training and Clips instead of stopping the window from opening.
+- Update reinstalls optional voice, clips, and chat requirements only when this PC already has them.
+
 ### Fixed
 
 - The menu greeting no longer repeats when a voice file is written, or when the window restarts in place. (`2326a59`)

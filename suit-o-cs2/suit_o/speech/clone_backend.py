@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import threading
 import time
+import wave
 from collections.abc import Callable
 from pathlib import Path
 
@@ -44,6 +46,7 @@ class CloneSpeechBackend(SpeechBackend):
         self._fallback = fallback
         self._cancel = threading.Event()
         self._urgent = threading.Event()
+        self._round_live = threading.Event()
         self._lock = threading.Lock()
         self._closed = False
         self._live = False
@@ -51,6 +54,14 @@ class CloneSpeechBackend(SpeechBackend):
         self._writing: set[Path] = set()
         self.synthesized: list[str] = []
         self.fallback_spoken: list[str] = []
+
+    def set_round_live(self, live: bool) -> None:
+        """Pause pre-rendering while a round's phase is live."""
+
+        if live:
+            self._round_live.set()
+        else:
+            self._round_live.clear()
 
     def allow_live_synthesis(self) -> None:
         """Let this instance synthesize. Used only for Voice-tab preview."""
@@ -92,7 +103,7 @@ class CloneSpeechBackend(SpeechBackend):
             for line in pending:
                 if self._closed:
                     break
-                while self._urgent.is_set() and not self._closed:
+                while (self._urgent.is_set() or self._round_live.is_set()) and not self._closed:
                     _release_model()
                     time.sleep(0.05)
                 if self._closed:
@@ -174,8 +185,11 @@ class CloneSpeechBackend(SpeechBackend):
         except RuntimeError:
             path = None
         if path is not None and path.is_file():
-            samples, rate = read_wav(path)
-            return self._play(samples, rate)
+            loaded = self._read_cached(path)
+            if loaded is not None:
+                return self._play(loaded[0], loaded[1])
+            logger.info("Pre-rendered clone for %r could not be read; using the Windows voice", cleaned)
+            return self._speak_fallback(cleaned)
         logger.info("No pre-rendered clone for %r; using the Windows voice", cleaned)
         return self._speak_fallback(cleaned)
 
@@ -249,12 +263,30 @@ class CloneSpeechBackend(SpeechBackend):
         try:
             samples, rate = self._synthesize(text, tuning)
             shaped = shape_waveform(samples, rate, tuning)
+            temporary = path.with_name(path.name + ".partial")
             with self._lock:
-                if not self._closed and not path.is_file():
-                    write_wav(path, shaped, rate)
+                if self._closed or path.is_file():
+                    return
+                write_wav(temporary, shaped, rate)
+                os.replace(temporary, path)
         finally:
+            temporary = path.with_name(path.name + ".partial")
+            if temporary.exists() and not path.is_file():
+                try:
+                    temporary.unlink()
+                except OSError:
+                    pass
             with self._lock:
                 self._writing.discard(path)
+
+    def _read_cached(self, path: Path) -> tuple[list[float], int] | None:
+        try:
+            samples, rate = read_wav(path)
+        except (OSError, ValueError, EOFError, wave.Error):
+            return None
+        if rate < 1 or not samples:
+            return None
+        return samples, rate
 
     def _synthesize(self, text: str, tuning: VoiceTuning) -> tuple[list[float], int]:
         profile = self._profile()

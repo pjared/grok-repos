@@ -16,6 +16,15 @@ REQUIREMENT_NAMES = (
     "requirements.txt",
     "requirements-dev.txt",
     "requirements-voice.txt",
+    "requirements-clips.txt",
+    "requirements-chat.txt",
+)
+OPTIONAL_REQUIREMENTS = frozenset(
+    {
+        "requirements-voice.txt",
+        "requirements-clips.txt",
+        "requirements-chat.txt",
+    }
 )
 
 GITHUB_OWNER = "pjared"
@@ -111,7 +120,10 @@ def _merge_ff_only(project: Path, runner: Runner, sha: str, before: str) -> Upda
         repo,
     )
     files = [line.strip() for line in diff.stdout.splitlines() if line.strip()]
-    requirements = requirement_paths(files, repo=repo, project=Path(project))
+    requirements = select_requirements(
+        requirement_paths(files, repo=repo, project=Path(project)),
+        _installed_optional(Path(project)),
+    )
     if requirements:
         names = ", ".join(Path(item).name for item in requirements)
         message = f"Updated. Reinstalling {names}, then reloading."
@@ -248,6 +260,49 @@ def explain_git_failure(text: str) -> str:
         )
     first = next((line.strip() for line in text.splitlines() if line.strip()), "git merge failed")
     return f"Update failed. {first}"
+
+
+def detect_installed_requirements() -> list[str]:
+    """Optional requirement files whose packages are already on this machine.
+
+    Uses module specs only. A broken install is not imported here.
+    """
+
+    found: list[str] = []
+    if _module_present("chatterbox"):
+        found.append("requirements-voice.txt")
+    if _module_present("demucs") or _module_present("pyannote"):
+        found.append("requirements-clips.txt")
+    if _module_present("faster_whisper"):
+        found.append("requirements-chat.txt")
+    return found
+
+
+def _module_present(name: str) -> bool:
+    import importlib.util
+
+    try:
+        return importlib.util.find_spec(name) is not None
+    except Exception:
+        return False
+
+
+def select_requirements(paths: list[str], installed: set[str]) -> list[str]:
+    """Keep base requirement files. Keep an optional file only if it is already installed."""
+
+    chosen: list[str] = []
+    for raw in paths:
+        name = Path(raw).name
+        if name in OPTIONAL_REQUIREMENTS and name not in installed:
+            continue
+        chosen.append(raw)
+    return chosen
+
+
+def _installed_optional(project: Path) -> set[str]:
+    from suit_o.local_config import read_installed_requirements
+
+    return read_installed_requirements(project / "config.yaml")
 
 
 def requirement_paths(changed: list[str], *, repo: Path, project: Path) -> list[str]:

@@ -665,10 +665,6 @@ class LineupsPanel:
 
 
 def _fit_photo(path: str, max_width: int) -> tk.PhotoImage:
-    image = tk.PhotoImage(file=path)
-    factor = 1
-    while factor < 8 and image.width() // factor > max_width:
-        factor += 1
-    if factor == 1:
-        return image
-    return image.subsample(factor, factor)
+    from suit_o.gui.photos import fit_photo
+
+    return fit_photo(path, max_width)

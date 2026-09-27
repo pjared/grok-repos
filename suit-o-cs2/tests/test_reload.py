@@ -7,7 +7,13 @@ from pathlib import Path
 
 from suit_o.app import SuitOApp
 from suit_o.config import DEFAULT_CONFIG_PATH, ConfigError, load_config
-from suit_o.local_config import local_config_path, migrate_user_settings, store_personal_settings
+from suit_o.local_config import (
+    local_config_path,
+    migrate_user_settings,
+    read_installed_requirements,
+    remember_installed_requirements,
+    store_personal_settings,
+)
 from suit_o.models import EventType
 from suit_o.gsi.payloads import make_payload
 from suit_o.reload import (
@@ -331,6 +337,52 @@ def test_update_reports_local_changes_fast_forward_and_requirements(tmp_path: Pa
         repo=repo,
         project=project,
     ) == []
+
+
+def test_update_skips_optional_requirements_until_they_are_installed(tmp_path: Path):
+    project = tmp_path / "suit-o-cs2"
+    project.mkdir()
+    repo = tmp_path
+    (repo / ".git").mkdir()
+    (project / "requirements.txt").write_text("pyyaml\n", encoding="utf-8")
+    (project / "requirements-voice.txt").write_text("torch\n", encoding="utf-8")
+    (project / "requirements-clips.txt").write_text("demucs\n", encoding="utf-8")
+    (project / "config.yaml").write_text("mute: false\n", encoding="utf-8")
+
+    def runner(after: str):
+        heads = iter(["aaa\n", after])
+
+        def pulled(args, _cwd):
+            if args == ["git", "rev-parse", "HEAD"]:
+                return CommandResult(0, next(heads), "")
+            if args == ["git", "fetch", "origin"]:
+                return CommandResult(0, "", "")
+            if args == ["git", "rev-parse", "origin/main"]:
+                return CommandResult(0, after, "")
+            if args == ["git", "merge", "--ff-only", after.strip()]:
+                return CommandResult(0, "Updating\n", "")
+            if args[:2] == ["git", "diff"]:
+                return CommandResult(
+                    0,
+                    "suit-o-cs2/requirements.txt\n"
+                    "suit-o-cs2/requirements-voice.txt\n"
+                    "suit-o-cs2/requirements-clips.txt\n",
+                    "",
+                )
+            return CommandResult(1, "", f"unexpected {args}")
+
+        return pulled
+
+    skipped = run_git_update(project, runner("bbb\n"), check=lambda _sha: "success")
+    assert skipped.requirements == (str((project / "requirements.txt").resolve()),)
+    assert "requirements-voice.txt" not in skipped.message
+
+    remember_installed_requirements(project / "config.yaml", ["requirements-voice.txt"])
+    assert read_installed_requirements(project / "config.yaml") == {"requirements-voice.txt"}
+    marked = run_git_update(project, runner("ccc\n"), check=lambda _sha: "success")
+    names = {Path(item).name for item in marked.requirements}
+    assert names == {"requirements.txt", "requirements-voice.txt"}
+    assert "requirements-clips.txt" not in names
 
 
 def _workflow(sha: str, *, status: str, conclusion: str | None, updated_at: str = "2026-09-27T00:00:00Z"):

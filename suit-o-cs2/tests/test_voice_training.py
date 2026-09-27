@@ -232,6 +232,170 @@ def test_match_playback_uses_only_prerendered_files(tmp_path: Path):
     assert fallback.spoken == ["Not in the cache"]
 
 
+def test_prerender_waits_while_the_round_is_live(tmp_path: Path):
+    voices = tmp_path / "voices"
+    _write_profile(voices)
+    calls: list[str] = []
+
+    def synthesize(text: str, prompt: Path, emphasis: str):
+        calls.append(text)
+        return [0.2, -0.2], 8000
+
+    settings = SpeechConfig(
+        backend="clone",
+        voice="Suit-O",
+        rate=185,
+        volume=0.5,
+        output_device="Headphones",
+        voices_dir=str(voices),
+    )
+    backend = CloneSpeechBackend(
+        settings,
+        synthesizer=synthesize,
+        player=lambda samples, rate, device, volume, cancel: True,
+        fallback=_Fallback(),
+    )
+    backend.set_round_live(True)
+    backend.prerender(["Hello"], wait=False)
+    assert backend.wait_prerender(0.2) is False
+    assert calls == []
+    backend.set_round_live(False)
+    assert backend.wait_prerender(2) is True
+    assert calls == ["Hello"]
+    cache = find_profile(voices, "Suit-O").directory / "cache"
+    assert list(cache.glob("*.partial")) == []
+    wavs = list(cache.glob("*.wav"))
+    assert len(wavs) == 1
+    samples, rate = read_wav(wavs[0])
+    assert rate == 8000
+    assert samples
+
+
+def test_unreadable_cache_uses_the_windows_voice(tmp_path: Path):
+    voices = tmp_path / "voices"
+    _write_profile(voices)
+    settings = SpeechConfig(
+        backend="clone",
+        voice="Suit-O",
+        rate=185,
+        volume=0.5,
+        output_device="Headphones",
+        voices_dir=str(voices),
+    )
+    fallback = _Fallback()
+    backend = CloneSpeechBackend(
+        settings,
+        synthesizer=lambda text, prompt, emphasis: ([0.2, -0.2], 8000),
+        player=lambda samples, rate, device, volume, cancel: True,
+        fallback=fallback,
+    )
+    backend.prerender(["Hello"], wait=True)
+    wavs = list((find_profile(voices, "Suit-O").directory / "cache").glob("*.wav"))
+    assert len(wavs) == 1
+    wavs[0].write_bytes(b"not a wav file")
+    assert backend.speak("Hello") is True
+    assert fallback.spoken == ["Hello"]
+
+
+def test_gsi_live_round_holds_prerender_until_the_round_ends(tmp_path: Path, monkeypatch):
+    from suit_o.gsi.parse import parse_payload
+
+    voices = tmp_path / "voices"
+    _write_profile(voices)
+    lines_path = tmp_path / "lines.yaml"
+    lines_path.write_text(
+        "events:\n  round_start:\n    - Hello from the stock file.\n",
+        encoding="utf-8",
+    )
+    path = tmp_path / "config.yaml"
+    path.write_bytes(DEFAULT_CONFIG_PATH.read_bytes())
+    calls: list[str] = []
+
+    def factory(settings: SpeechConfig) -> CloneSpeechBackend:
+        return CloneSpeechBackend(
+            settings,
+            synthesizer=lambda text, prompt, emphasis: calls.append(text) or ([0.1, -0.1], 8000),
+            player=lambda samples, rate, device, volume, cancel: True,
+            fallback=_Fallback(),
+        )
+
+    monkeypatch.setattr(
+        "suit_o.app.runtime_status",
+        lambda: RuntimeStatus(True, "cpu", "Chatterbox on CPU"),
+    )
+    config = load_config(path)
+    config.lines_path = lines_path
+    config.server.port = 0
+    app = SuitOApp(
+        config,
+        backend=StubSpeechBackend(),
+        config_path=path,
+        voices_dir=voices,
+        backend_factory=factory,
+    )
+    app.start()
+    try:
+        app._note_match(parse_payload({"round": {"phase": "live"}}))
+        app.prerender_profile("Suit-O")
+        renderer = app._renderers[-1]
+        assert renderer.wait_prerender(0.2) is False
+        assert calls == []
+        assert any("waits until this round ends" in entry.message for entry in app.activity())
+        app._note_match(parse_payload({"round": {"phase": "freezetime"}}))
+        assert renderer.wait_prerender(2) is True
+        assert calls == ["Hello from the stock file."]
+    finally:
+        app.stop()
+
+
+def test_broken_torch_does_not_count_as_installed(monkeypatch):
+    import builtins
+
+    real_import = builtins.__import__
+
+    def guarded(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "torch" or name.startswith("torch."):
+            raise RuntimeError("broken torch")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", guarded)
+    status = runtime_status()
+    assert status.installed is False
+    assert status.device == "unavailable"
+
+
+def test_training_record_and_build_stay_grey_without_the_voice_stack(tmp_path: Path, monkeypatch):
+    import tkinter as tk
+    from tkinter import ttk
+
+    from suit_o.gui.training import TrainingPanel
+
+    monkeypatch.setattr(
+        "suit_o.gui.training.runtime_status",
+        lambda: RuntimeStatus(False, "unavailable", INSTALL_HINT),
+    )
+
+    class _App:
+        def __init__(self) -> None:
+            self.voices_dir = tmp_path / "voices"
+            self.config_path = None
+
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        panel = TrainingPanel(
+            ttk.Frame(root),
+            _App(),
+            on_profile_built=lambda _name: None,
+            schedule=lambda callback: None,
+        )
+        assert "disabled" in panel.record_button.state()
+        assert "disabled" in panel.play_button.state()
+        assert "disabled" in panel.build_button.state()
+    finally:
+        root.destroy()
+
+
 def test_clone_backend_caches_lines_and_preview_does_not_replace_the_live_backend(tmp_path: Path):
     voices = tmp_path / "voices"
     _write_profile(voices)

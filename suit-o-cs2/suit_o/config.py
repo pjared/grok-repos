@@ -243,8 +243,8 @@ def parse_config(raw: dict, *, config_path: Path | None = None) -> Config:
         raise ConfigError("server.token must be at least 8 characters")
     if token == "suito-local-change-me":
         warnings.append(
-            "server.token is still the sample value. Change it in config.yaml "
-            "and in gamestate_integration_suito.cfg before using a shared PC."
+            "server.token is still the sample value. Suit-O writes a personal "
+            "token into config.local.yaml on startup and into the CS2 cfg when it finds one."
         )
 
     backend = str(speech_raw.get("backend", "pyttsx3")).strip().lower()

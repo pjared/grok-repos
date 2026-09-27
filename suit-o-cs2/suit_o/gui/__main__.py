@@ -46,6 +46,7 @@ def _run(config_path: Path, *, start_muted: bool) -> int:
             migrate_user_settings(config_path)
         except (ConfigError, OSError, ValueError) as exc:
             logger.warning("Could not move personal settings into config.local.yaml: %s", exc)
+        _ensure_personal_token(config_path)
         config = load_config(config_path)
     except (ConfigError, OSError, ValueError) as exc:
         logger.error("Config error: %s", exc)
@@ -104,6 +105,17 @@ def _run(config_path: Path, *, start_muted: bool) -> int:
     finally:
         app.stop()
     return 0
+
+
+def _ensure_personal_token(config_path: Path) -> None:
+    """Write a random GSI token once. The token is not logged."""
+
+    try:
+        from suit_o.gsi_token import ensure_personal_token
+
+        ensure_personal_token(config_path)
+    except Exception:
+        logger.warning("Could not write a personal GSI token.")
 
 
 def _configure_logging() -> None:

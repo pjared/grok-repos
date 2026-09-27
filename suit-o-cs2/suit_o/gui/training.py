@@ -217,6 +217,10 @@ class TrainingPanel:
     def reload_microphones(self) -> None:
         self.runtime = runtime_status()
         self.runtime_label.configure(text=self.runtime.summary)
+        ready = ["!disabled"] if self.runtime.installed else ["disabled"]
+        self.record_button.state(ready)
+        self.play_button.state(ready)
+        self.build_button.state(ready)
         if not self.runtime.installed:
             self.microphone["values"] = ()
             self.microphone.set("")

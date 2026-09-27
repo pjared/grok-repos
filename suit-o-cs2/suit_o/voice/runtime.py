@@ -29,15 +29,15 @@ def runtime_status() -> RuntimeStatus:
 
     try:
         import torch
-    except ImportError:
+    except Exception:
         return RuntimeStatus(False, "unavailable", INSTALL_HINT)
     try:
         import chatterbox.tts  # noqa: F401
-    except ImportError:
+    except Exception:
         return RuntimeStatus(False, "unavailable", INSTALL_HINT)
     try:
         import sounddevice  # noqa: F401
-    except ImportError:
+    except Exception:
         return RuntimeStatus(False, "unavailable", INSTALL_HINT)
     if bool(torch.cuda.is_available()):
         try:

@@ -676,7 +676,7 @@ class ClipsPanel:
         try:
             from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
             from matplotlib.figure import Figure
-        except ImportError:
+        except Exception:
             return ttk.Label(
                 parent,
                 text=(

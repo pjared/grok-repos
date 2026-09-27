@@ -41,19 +41,15 @@ These steps assume Windows 10 or 11 and the default Steam library path. If CS2 i
 
    If activation is blocked, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, then activate again.
 
-3. Pick a token and put the same value in both places:
-   - `config.yaml` → `server.token`
-   - `gamestate_integration_suito.cfg` → `auth` / `token`
-
-   The sample value `suito-local-change-me` works for a first run. Change it before using a shared computer. Suit-O only binds to `127.0.0.1`.
-
-4. Copy `gamestate_integration_suito.cfg` into the CS2 config directory:
+3. Copy `gamestate_integration_suito.cfg` into the CS2 config directory:
 
    ```text
    C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Global Offensive\game\csgo\cfg\
    ```
 
    The file name has to stay `gamestate_integration_suito.cfg` (CS2 only loads files whose names start with `gamestate_integration_`).
+
+4. Leave the sample token in the repository. The first time Suit-O starts, it writes a random token into `config.local.yaml` and replaces that sample in the CS2 cfg from the previous step. The token is not logged. Suit-O only binds to `127.0.0.1`. If you copy the cfg after that first start, copy the token from `config.local.yaml` into the cfg's `auth` / `token`.
 
 5. Quit Counter-Strike 2 completely if it is running, then start it again. The game reads GSI configs at launch.
 
@@ -65,7 +61,7 @@ These steps assume Windows 10 or 11 and the default Steam library path. If CS2 i
 
    `Start Suit-O GUI.bat` does the same thing with `pythonw`. The window has four tabs.
 
-   **Listener.** Shows whether the listener is up and how long it has been since CS2 last sent game state. Mute, volume, and the output device are saved to `config.local.yaml` (next to `config.yaml`, and not part of git). The first time Suit-O starts, settings you already changed in `config.yaml` — such as a headset's chat output — are copied into that local file and those keys in `config.yaml` go back to the shared defaults, so **Update** can pull. Pick the playback device you actually want to hear. The list is Windows' speech outputs (SAPI), for example speakers, a headset earphone, a digital output, or a monitor. A headset often shows up twice — once for game audio and once for chat — and the Windows default is not always the one that makes a sound. Choose the endpoint, then press **Test voice**. Microphones are not listed, and Suit-O still refuses a microphone or virtual-cable name if one is typed into `speech.output_device`. **Update** fast-forwards to the exact commit whose Suit-O tests passed. If a requirements file changed, Suit-O reinstalls it and reloads. If you have local edits git would overwrite, the window says so and leaves the running copy alone. **Check for updates when Suit-O opens** does that same check at startup.
+   **Listener.** Shows whether the listener is up and how long it has been since CS2 last sent game state. Mute, volume, and the output device are saved to `config.local.yaml` (next to `config.yaml`, and not part of git). The first time Suit-O starts, settings you already changed in `config.yaml` — such as a headset's chat output — are copied into that local file and those keys in `config.yaml` go back to the shared defaults, so **Update** can pull. Pick the playback device you actually want to hear. The list is Windows' speech outputs (SAPI), for example speakers, a headset earphone, a digital output, or a monitor. A headset often shows up twice — once for game audio and once for chat — and the Windows default is not always the one that makes a sound. Choose the endpoint, then press **Test voice**. Microphones are not listed, and Suit-O still refuses a microphone or virtual-cable name if one is typed into `speech.output_device`. **Update** fast-forwards to the exact commit whose Suit-O tests passed. If `requirements.txt` or `requirements-dev.txt` changed, Suit-O reinstalls that file and reloads. Optional voice, clips, and chat requirements are reinstalled only when this PC already has them. If you have local edits git would overwrite, the window says so and leaves the running copy alone. **Check for updates when Suit-O opens** does that same check at startup.
 
    **Voice.** Fine-tune the voice used for every in-game line. The picker lists installed Windows SAPI voices (blank in the config, shown as "Engine default", keeps the engine's own voice) and any voice you built on the Voice Training tab (`Clone: name`). Sliders set speaking rate (words per minute), pitch (-10 to 10), volume (the same slider as on the Listener tab), and an optional pause before each line (milliseconds). Emphasis is None, Mild, or Strong. **Preview** speaks the text box through the output device selected on the Listener tab, including slider positions you have not saved yet. **Save** writes the settings to `config.local.yaml` and uses them for every in-game line. Saving a cloned voice sets `speech.backend` to `clone`. **Reset to defaults** puts back rate 185, pitch 0, volume 0.85, no pause, no emphasis, and the engine default voice, and saves that immediately. Closing the window saves the last saved tuning, not an unsaved draft. Volume is the exception: moving either volume slider saves it.
 
@@ -108,9 +104,9 @@ Before the cut, two optional passes can clean a take. **Separate vocals** uses [
 
 Clips live under `voices/<name>/clips/` (gitignored with the rest of `voices/`). Pick a script line to prefill the transcript. The library can play, rename, edit the transcript, delete, and mark a clip included or excluded. The included total is shown there. **Build voice** uses those included clips along with any lines recorded on Script. The same consent note applies: your own voice, or someone who agreed. ffmpeg, librosa, and Matplotlib stay dependencies in `requirements-voice.txt`. The repo does not vendor those projects.
 
-**Build voice** also pre-renders every stock line in `lines/lines.yaml` to WAV files under `voices/<name>/cache/`. That render is required. It runs again when you edit those stock lines, and again when you save a new rate, pitch, pause, or emphasis for that voice. Volume does not rebuild the files. During a match Suit-O plays only those files: no live synthesis and no GPU use. If a file is missing (a line that filled in a real map name, health, or dollar amount, or a render that has not finished), that one line uses the Windows SAPI voice instead of generating audio mid-match. **Preview** on the Voice tab is the only live synthesis. After a render or a preview, the model is unloaded so the GPU is free for the match.
+**Build voice** also pre-renders every stock line in `lines/lines.yaml` to WAV files under `voices/<name>/cache/`. That render is required. It runs again when you edit those stock lines, and again when you save a new rate, pitch, pause, or emphasis for that voice. Volume does not rebuild the files. While GSI says the round phase is live, rendering waits and continues when that round is no longer live. During a match Suit-O plays only those files: no live synthesis and no GPU use. Each file is written to a temporary name and renamed into place. If a file is missing, still being written, or cannot be read (a line that filled in a real map name, health, or dollar amount, or a render that has not finished), that one line uses the Windows SAPI voice instead of generating audio mid-match. **Preview** on the Voice tab is the only live synthesis. After a render or a preview, the model is unloaded so the GPU is free for the match. If the optional voice packages fail to load, the window still opens and Voice Training stays grey.
 
-Install the optional stack only if you want this. The base app stays on PyYAML, pyttsx3, and tkinterdnd2 for file drops.
+Install the optional stack only if you want this. The base app stays on PyYAML, pyttsx3, Pillow, and tkinterdnd2 for file drops.
 
 ```powershell
 python -m pip install -r requirements-voice.txt
@@ -184,7 +180,7 @@ Run CS2 in **borderless windowed** or **windowed** mode so a normal desktop wind
 
 The card hides when that grenade is not in your hand, when you are dead, or when the round is over. A hotkey can hide it even while you are holding a grenade, and show it again the next time the trigger matches. Two more hotkeys cycle to the next or previous lineup of the same grenade. The defaults are `ctrl+shift+right`, `ctrl+shift+left`, and `ctrl+shift+h`. Saving them writes `config.local.yaml`. They must not be the same chord as `ptt.cs2_voice_key` or the reserved `ptt.keybind`. On Windows they are registered with the system so they work while CS2 is focused. They only change this overlay. They are not forwarded to the game. On Windows the overlay is click-through, so mouse clicks land on the game underneath.
 
-A pack lineup shows the stand photo and the aim photo side by side, with a small grenade icon. The caption is the stand spot, the aim spot, and the throw type (for example `T ramp → Window (jumpthrow)`). Folder screenshots are smokes, so they appear while you hold a smoke.
+A pack lineup shows the stand photo and the aim photo side by side, with a small grenade icon. Those photos can be PNG, JPEG, or WebP. The caption is the stand spot, the aim spot, and the throw type (for example `T ramp → Window (jumpthrow)`). Folder screenshots are smokes, so they appear while you hold a smoke.
 
 No lineup images are shipped. Add your own PNGs:
 
@@ -220,7 +216,7 @@ Leave the desktop window open. Suit-O watches `config.yaml`, `config.local.yaml`
 
 A change under `suit_o/` (for example after **Update**) restarts the window in place. Several files saved together count as one restart. Suit-O stops the game-state listener and frees port 3000, then opens again on the same tab with the same window position and the same event-log lines. Mute is kept. A short **Reloaded** notice confirms it. A restart waits if you are in a live round and not in the menu. The window shows **Update pending** until the round ends or you return to the menu, then reloads. Freezetime, a finished round, warmup, and the menu do not wait.
 
-**Update** on the Listener tab fetches `origin/main` and remembers that commit. It reads the `suit-o-tests.yml` workflow run for that exact SHA from the public GitHub API. A check that is only named pytest does not count. A failed run, or a run that is still going or missing, stops the update and the status line says why. Nothing is merged in that case. When that run passed, **Update** runs `git merge --ff-only` on that SHA, even if a newer commit landed while the check was being read. When `requirements.txt`, `requirements-dev.txt`, or `requirements-voice.txt` changed, it runs `python -m pip install -r` on those files, then restarts. If the pull is already current, nothing restarts. If local edits would be overwritten, or the histories have diverged, the status line says what to do and Suit-O keeps running. Personal settings in `config.local.yaml` do not block the pull. **Update** also waits out a live round, with the same **Update pending** notice, and does not pull until you are in the menu or the round is no longer live.
+**Update** on the Listener tab fetches `origin/main` and remembers that commit. It reads the `suit-o-tests.yml` workflow run for that exact SHA from the public GitHub API. A check that is only named pytest does not count. A failed run, or a run that is still going or missing, stops the update and the status line says why. Nothing is merged in that case. When that run passed, **Update** runs `git merge --ff-only` on that SHA, even if a newer commit landed while the check was being read. When `requirements.txt` or `requirements-dev.txt` changed, it runs `python -m pip install -r` on those files, then restarts. `requirements-voice.txt`, `requirements-clips.txt`, and `requirements-chat.txt` are reinstalled only when this PC already has them. That list is kept in `config.local.yaml`. If the pull is already current, nothing restarts. If local edits would be overwritten, or the histories have diverged, the status line says what to do and Suit-O keeps running. Personal settings in `config.local.yaml` do not block the pull. **Update** also waits out a live round, with the same **Update pending** notice, and does not pull until you are in the menu or the round is no longer live.
 
 Pushes to `main` run that pytest job on `windows-latest` (`.github/workflows/suit-o-tests.yml`).
 
@@ -230,7 +226,7 @@ Pushes to `main` run that pytest job on `windows-latest` (`.github/workflows/sui
 
 ## Troubleshooting
 
-**No log lines when you play.** Confirm the cfg file is in `game\csgo\cfg\`, the name still starts with `gamestate_integration_`, and CS2 was restarted after the copy. The token in the cfg and in `config.yaml` must match. A mismatch is logged as `auth token mismatch`.
+**No log lines when you play.** Confirm the cfg file is in `game\csgo\cfg\`, the name still starts with `gamestate_integration_`, and CS2 was restarted after the copy. The token in the cfg and in `config.local.yaml` must match. A mismatch is logged as `auth token mismatch`.
 
 **Port already in use.** Change `server.port` and the `uri` in the cfg to the same new port, then restart both Suit-O and CS2.
 

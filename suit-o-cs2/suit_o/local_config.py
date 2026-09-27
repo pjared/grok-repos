@@ -423,6 +423,44 @@ def _coerce(key: str, value: object) -> object:
     return text
 
 
+def read_installed_requirements(config_path: Path) -> set[str]:
+    """Optional requirement files this PC has already installed."""
+
+    raw = _read_local_mapping(config_path).get("installed_requirements")
+    if not isinstance(raw, list):
+        return set()
+    return {str(item).strip() for item in raw if str(item).strip()}
+
+
+def remember_installed_requirements(config_path: Path, names: list[str]) -> None:
+    """Record optional requirement files so Update can reinstall only those."""
+
+    fresh = {name.strip() for name in names if name.strip()}
+    if not fresh:
+        return
+    data = _read_local_mapping(config_path)
+    current = data.get("installed_requirements")
+    kept = [str(item) for item in current] if isinstance(current, list) else []
+    for name in sorted(fresh):
+        if name not in kept:
+            kept.append(name)
+    data["installed_requirements"] = kept
+    path = local_config_path(config_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_write(path, yaml.safe_dump(data, sort_keys=False).encode("utf-8"))
+
+
+def _read_local_mapping(config_path: Path) -> dict:
+    path = local_config_path(config_path)
+    if not path.is_file():
+        return {}
+    try:
+        loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
 def _atomic_write(path: Path, payload: bytes) -> None:
     temporary = path.with_name(path.name + ".tmp")
     try:

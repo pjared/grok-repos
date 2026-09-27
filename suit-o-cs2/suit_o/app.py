@@ -164,6 +164,7 @@ class SuitOApp:
         if self._started:
             return
         self._started = True
+        self._note_optional_installs()
         self.speech.start()
         self.speech.apply_tuning(self.current_tuning())
         self.speech.set_muted(bool(getattr(self.lines, "muted", self.config.mute)))
@@ -483,10 +484,12 @@ class SuitOApp:
         if not isinstance(backend, CloneSpeechBackend):
             return
         self._renderers.append(backend)
-        backend.prerender(stock_line_texts(self.config.lines_path))
-        self._record(
-            f"Rendering every stock line for {cleaned}. "
-            "Matches play those files only and do not synthesize live."
+        self._queue_prerender(
+            backend,
+            (
+                f"Rendering every stock line for {cleaned}. "
+                "Matches play those files only and do not synthesize live."
+            ),
         )
 
     def poll_stock_lines(self) -> None:
@@ -520,11 +523,48 @@ class SuitOApp:
                 + " Missing stock lines will use the Windows voice until the clone is rendered."
             )
             return
-        backend.prerender(stock_line_texts(self.config.lines_path))
-        self._record(
-            "Rendering every stock line for the cloned voice. "
-            "Matches play only those files, with no live synthesis."
+        self._queue_prerender(
+            backend,
+            (
+                "Rendering every stock line for the cloned voice. "
+                "Matches play only those files, with no live synthesis."
+            ),
         )
+
+    def _queue_prerender(self, backend: CloneSpeechBackend, note: str) -> None:
+        """Start a cache render, or hold it while the round phase is live."""
+
+        live = self._round_phase_live()
+        backend.set_round_live(live)
+        backend.prerender(stock_line_texts(self.config.lines_path))
+        if live:
+            self._record("Rendering waits until this round ends.")
+            return
+        self._record(note)
+
+    def _round_phase_live(self) -> bool:
+        return (self._match_round or "").strip().lower() == "live"
+
+    def _sync_render_pause(self) -> None:
+        live = self._round_phase_live()
+        if isinstance(self.backend, CloneSpeechBackend):
+            self.backend.set_round_live(live)
+        for backend in self._renderers:
+            if isinstance(backend, CloneSpeechBackend):
+                backend.set_round_live(live)
+
+    def _note_optional_installs(self) -> None:
+        """Remember optional requirement files that are already installed."""
+
+        if self.config_path is None:
+            return
+        from suit_o.local_config import remember_installed_requirements
+        from suit_o.update import detect_installed_requirements
+
+        try:
+            remember_installed_requirements(self.config_path, detect_installed_requirements())
+        except OSError:
+            logger.debug("Could not record installed optional requirements", exc_info=True)
 
     def _stock_lines_stamp(self) -> str | None:
         path = self.config.lines_path
@@ -639,6 +679,7 @@ class SuitOApp:
             self._match_round = snapshot.round_phase
         elif not snapshot.round_present:
             self._match_round = None
+        self._sync_render_pause()
 
     def lineup_view(self) -> DeckView:
         """Current overlay card. Safe to call from the window thread."""

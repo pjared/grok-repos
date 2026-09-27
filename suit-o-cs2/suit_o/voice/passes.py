@@ -36,7 +36,7 @@ class SpeakerTurn:
 def demucs_available() -> bool:
     try:
         import demucs.apply  # noqa: F401
-    except ImportError:
+    except Exception:
         return False
     return True
 
@@ -44,7 +44,7 @@ def demucs_available() -> bool:
 def pyannote_available() -> bool:
     try:
         import pyannote.audio  # noqa: F401
-    except ImportError:
+    except Exception:
         return False
     return True
 
