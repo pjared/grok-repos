@@ -174,7 +174,9 @@ def load_config(path: Path | None = None) -> Config:
 
     local_path = local_config_path(config_path)
     if local_path.is_file():
-        raw = deep_merge(raw, read_yaml_mapping(local_path, empty_ok=True))
+        from suit_o.local_config import read_local_document
+
+        raw = deep_merge(raw, read_local_document(local_path))
     return parse_config(raw, config_path=config_path)
 
 

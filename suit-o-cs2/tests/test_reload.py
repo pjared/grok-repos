@@ -173,6 +173,49 @@ def test_app_save_writes_the_local_file_and_leaves_config_yaml(tmp_path: Path):
     assert "virtual cable" in path.read_text(encoding="utf-8")
 
 
+def test_local_config_is_rewritten_only_when_it_changes(tmp_path: Path, monkeypatch):
+    path = tmp_path / "config.yaml"
+    path.write_bytes(DEFAULT_CONFIG_PATH.read_bytes())
+    remember_installed_requirements(path, ["requirements-voice.txt"])
+    local = local_config_path(path)
+    local.write_text("# keep me\n" + local.read_text(encoding="utf-8"), encoding="utf-8")
+    before = local.read_bytes()
+    stamp = local.stat().st_mtime_ns
+    assert remember_installed_requirements(path, ["requirements-voice.txt"]) == ""
+    assert local.read_bytes() == before
+    assert local.stat().st_mtime_ns == stamp
+
+    store_personal_settings(path, volume=0.4)
+    changed = local.read_bytes()
+    assert changed != before
+    stamp = local.stat().st_mtime_ns
+    store_personal_settings(path, volume=0.4)
+    assert local.read_bytes() == changed
+    assert local.stat().st_mtime_ns == stamp
+
+    broken = "speech: [\n"
+    local.write_text(broken, encoding="utf-8")
+    monkeypatch.setattr(
+        "suit_o.update.detect_installed_requirements",
+        lambda: ["requirements-voice.txt"],
+    )
+    app = SuitOApp(load_config(DEFAULT_CONFIG_PATH), backend=StubSpeechBackend(), config_path=path)
+    app._note_optional_installs()
+    assert local.read_text(encoding="utf-8") == broken
+    backups = list(tmp_path.glob("config.local.yaml.*.bak"))
+    assert len(backups) == 1
+    assert backups[0].read_text(encoding="utf-8") == broken
+    assert any("left it unchanged" in item.message for item in app.activity())
+    try:
+        store_personal_settings(path, volume=0.2)
+    except ConfigError as exc:
+        assert "left it unchanged" in str(exc)
+    else:
+        raise AssertionError("a corrupt local file was saved over")
+    assert local.read_text(encoding="utf-8") == broken
+    assert len(list(tmp_path.glob("config.local.yaml.*.bak"))) == 1
+
+
 def test_invalid_config_and_lines_keep_the_previous_settings(tmp_path: Path):
     lines = tmp_path / "lines.yaml"
     lines.write_text("events:\n  kill:\n    - Hello from the stock file.\n", encoding="utf-8")

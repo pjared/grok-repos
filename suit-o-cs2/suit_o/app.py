@@ -562,9 +562,14 @@ class SuitOApp:
         from suit_o.update import detect_installed_requirements
 
         try:
-            remember_installed_requirements(self.config_path, detect_installed_requirements())
+            warning = remember_installed_requirements(
+                self.config_path, detect_installed_requirements()
+            )
         except OSError:
             logger.debug("Could not record installed optional requirements", exc_info=True)
+            return
+        if warning:
+            self.note(warning)
 
     def _stock_lines_stamp(self) -> str | None:
         path = self.config.lines_path

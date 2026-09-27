@@ -97,6 +97,27 @@ def test_existing_cfg_key_is_kept_and_a_missing_cfg_is_not_replaced(tmp_path: Pa
     assert not local_config_path(third).exists()
 
 
+def test_a_corrupt_local_config_is_not_replaced(tmp_path: Path):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_bytes(DEFAULT_CONFIG_PATH.read_bytes())
+    outside = tmp_path / "csgo" / "cfg" / CFG_NAME
+    outside.parent.mkdir(parents=True)
+    outside.write_text(
+        (PROJECT_ROOT / "gamestate_integration_suito.cfg").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    local = local_config_path(config_path)
+    local.write_text("speech: [\n", encoding="utf-8")
+    result = ensure_personal_token(config_path, cfg_files=[outside])
+    assert result.created is False
+    assert "left it unchanged" in result.warning
+    assert local.read_text(encoding="utf-8") == "speech: [\n"
+    assert SAMPLE_TOKEN in outside.read_text(encoding="utf-8")
+    backups = list(tmp_path.glob("config.local.yaml.*.bak"))
+    assert len(backups) == 1
+    assert backups[0].read_text(encoding="utf-8") == "speech: [\n"
+
+
 def test_a_steam_library_on_another_drive_is_found(tmp_path: Path):
     library = tmp_path / "SteamLibrary"
     cfg = library / "steamapps/common/Counter-Strike Global Offensive/game/csgo/cfg"

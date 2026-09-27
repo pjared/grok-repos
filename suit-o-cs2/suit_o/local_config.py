@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -220,7 +221,7 @@ def store_personal_settings(
 def _local_has_settings(path: Path) -> bool:
     if not path.is_file():
         return False
-    return bool(read_yaml_mapping(path, empty_ok=True))
+    return bool(read_local_document(path))
 
 
 def _diffs_from_defaults(raw: dict) -> dict:
@@ -375,11 +376,52 @@ def _apply_managed(overlay: dict, base: dict, section: str | None, values: dict)
             overlay.pop(section, None)
 
 
-def _read_local(path: Path) -> dict:
+def read_local_document(path: Path) -> dict:
+    """Read ``config.local.yaml``. A file that does not parse is copied aside and left in place."""
+
     if not path.is_file():
         return {}
-    loaded = read_yaml_mapping(path, empty_ok=True)
+    try:
+        loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        backup = _backup_unreadable(path)
+        raise ConfigError(_unreadable_message(path, backup)) from exc
+    except OSError:
+        raise
+    if loaded is None:
+        return {}
+    if not isinstance(loaded, dict):
+        backup = _backup_unreadable(path)
+        raise ConfigError(_unreadable_message(path, backup))
     return dict(loaded)
+
+
+def _unreadable_message(path: Path, backup: Path) -> str:
+    return (
+        f"{path.name} could not be read, so Suit-O left it unchanged and copied it to {backup.name}."
+    )
+
+
+def _backup_unreadable(path: Path) -> Path:
+    raw = path.read_bytes()
+    for existing in path.parent.glob(f"{path.name}.*.bak"):
+        try:
+            if existing.is_file() and existing.read_bytes() == raw:
+                return existing
+        except OSError:
+            continue
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    dest = path.with_name(f"{path.name}.{stamp}.bak")
+    counter = 2
+    while dest.exists():
+        dest = path.with_name(f"{path.name}.{stamp}-{counter}.bak")
+        counter += 1
+    dest.write_bytes(raw)
+    return dest
+
+
+def _read_local(path: Path) -> dict:
+    return read_local_document(path)
 
 
 def _write_overlay(path: Path, overlay: dict) -> None:
@@ -426,42 +468,53 @@ def _coerce(key: str, value: object) -> object:
 def read_installed_requirements(config_path: Path) -> set[str]:
     """Optional requirement files this PC has already installed."""
 
-    raw = _read_local_mapping(config_path).get("installed_requirements")
+    try:
+        raw = read_local_document(local_config_path(config_path)).get("installed_requirements")
+    except ConfigError:
+        return set()
     if not isinstance(raw, list):
         return set()
     return {str(item).strip() for item in raw if str(item).strip()}
 
 
-def remember_installed_requirements(config_path: Path, names: list[str]) -> None:
-    """Record optional requirement files so Update can reinstall only those."""
+def remember_installed_requirements(config_path: Path, names: list[str]) -> str:
+    """Record optional requirement files so Update can reinstall only those.
+
+    Returns a warning when the local file could not be read. The file is not
+    written when the list is already recorded or when it cannot be parsed.
+    """
 
     fresh = {name.strip() for name in names if name.strip()}
     if not fresh:
-        return
-    data = _read_local_mapping(config_path)
+        return ""
+    path = local_config_path(config_path)
+    try:
+        data = read_local_document(path)
+    except ConfigError as exc:
+        logger.warning("%s", exc)
+        return str(exc)
     current = data.get("installed_requirements")
     kept = [str(item) for item in current] if isinstance(current, list) else []
+    changed = False
     for name in sorted(fresh):
         if name not in kept:
             kept.append(name)
+            changed = True
+    if not changed:
+        return ""
     data["installed_requirements"] = kept
-    path = local_config_path(config_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     _atomic_write(path, yaml.safe_dump(data, sort_keys=False).encode("utf-8"))
-
-
-def _read_local_mapping(config_path: Path) -> dict:
-    path = local_config_path(config_path)
-    if not path.is_file():
-        return {}
-    try:
-        loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError):
-        return {}
-    return loaded if isinstance(loaded, dict) else {}
+    return ""
 
 
 def _atomic_write(path: Path, payload: bytes) -> None:
+    if path.is_file():
+        try:
+            if path.read_bytes() == payload:
+                return
+        except OSError:
+            pass
     temporary = path.with_name(path.name + ".tmp")
     try:
         temporary.write_bytes(payload)

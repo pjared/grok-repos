@@ -10,8 +10,8 @@ from pathlib import Path
 
 import yaml
 
-from suit_o.config import PROJECT_ROOT
-from suit_o.local_config import local_config_path
+from suit_o.config import PROJECT_ROOT, ConfigError
+from suit_o.local_config import local_config_path, read_local_document
 
 SAMPLE_TOKEN = "suito-local-change-me"
 CFG_NAME = "gamestate_integration_suito.cfg"
@@ -42,7 +42,10 @@ def ensure_personal_token(config_path: Path, cfg_files: list[Path] | None = None
 
     config_path = Path(config_path)
     local_path = local_config_path(config_path)
-    data = _read_yaml(local_path)
+    try:
+        data = read_local_document(local_path)
+    except ConfigError as exc:
+        return TokenSetup(False, str(exc))
     current = _server_token(data)
     cfgs = _outside(cfg_files if cfg_files is not None else discover_cfg_files())
     if current and current != SAMPLE_TOKEN:
@@ -203,17 +206,17 @@ def _server_token(data: dict) -> str:
     return str(server.get("token") or "").strip()
 
 
-def _read_yaml(path: Path) -> dict:
-    if not path.is_file():
-        return {}
-    loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
-    return loaded if isinstance(loaded, dict) else {}
-
-
 def _write_yaml(path: Path, data: dict) -> None:
+    payload = yaml.safe_dump(data, sort_keys=False)
     path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_file():
+        try:
+            if path.read_text(encoding="utf-8") == payload:
+                return
+        except OSError:
+            pass
     temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    temporary.write_text(payload, encoding="utf-8")
     os.replace(temporary, path)
 
 
