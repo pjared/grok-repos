@@ -12,7 +12,7 @@ New notes go under `## [Unreleased]`. Every push to `main` updates this file in 
 
 ### Fixed
 
-- The menu greeting no longer repeats when a voice file is written, or when the window restarts in place.
+- The menu greeting no longer repeats when a voice file is written, or when the window restarts in place. (`2326a59`)
 
 ### Removed
 
