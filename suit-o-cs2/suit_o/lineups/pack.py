@@ -398,20 +398,23 @@ def _optional_fields(row: dict, label: str) -> dict:
         "source_timestamp": "",
         "second_source_url": "",
         "verified_by_second_source": None,
-        "present": frozenset(key for key in (*_OPTIONAL_STRINGS, _OPTIONAL_BOOL) if key in row),
     }
+    present: set[str] = set()
     for key in _OPTIONAL_STRINGS:
-        if key not in row:
+        if key not in row or row[key] is None:
             continue
         value = row[key]
         if not isinstance(value, str):
             raise PackError(f"{label}.{key} must be a string")
         found[key] = value.strip()
-    if _OPTIONAL_BOOL in row:
+        present.add(key)
+    if _OPTIONAL_BOOL in row and row[_OPTIONAL_BOOL] is not None:
         value = row[_OPTIONAL_BOOL]
         if not isinstance(value, bool):
             raise PackError(f"{label}.{_OPTIONAL_BOOL} must be true or false")
         found[_OPTIONAL_BOOL] = value
+        present.add(_OPTIONAL_BOOL)
+    found["present"] = frozenset(present)
     return found
 
 

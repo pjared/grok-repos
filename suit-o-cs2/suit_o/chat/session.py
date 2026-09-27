@@ -65,33 +65,37 @@ class ChatSession:
         parts: list[str] = []
         pending = ""
         try:
-            for token in generate(messages):
-                if epoch != self._epoch or self._cancel or paused():
-                    break
-                piece = str(token)
-                if not piece:
-                    continue
-                parts.append(piece)
-                pending += piece
-                yield ("token", piece)
-                while True:
-                    sentence, pending = _take_sentence(pending)
-                    if sentence is None:
-                        break
+            try:
+                for token in generate(messages):
                     if epoch != self._epoch or self._cancel or paused():
-                        pending = ""
                         break
-                    speak(sentence)
-                    yield ("sentence", sentence)
-        finally:
+                    piece = str(token)
+                    if not piece:
+                        continue
+                    parts.append(piece)
+                    pending += piece
+                    yield ("token", piece)
+                    while True:
+                        sentence, pending = _take_sentence(pending)
+                        if sentence is None:
+                            break
+                        if epoch != self._epoch or self._cancel or paused():
+                            pending = ""
+                            break
+                        speak(sentence)
+                        yield ("sentence", sentence)
+            finally:
+                if epoch == self._epoch:
+                    if pending.strip() and not self._cancel and not paused():
+                        speak(pending.strip())
+                        yield ("sentence", pending.strip())
+                    answer = "".join(parts).strip()
+                    if answer:
+                        self.turns.append(ChatTurn("assistant", answer))
+        except BaseException:
             if epoch != self._epoch:
                 return
-            if pending.strip() and not self._cancel and not paused():
-                speak(pending.strip())
-                yield ("sentence", pending.strip())
-            answer = "".join(parts).strip()
-            if answer:
-                self.turns.append(ChatTurn("assistant", answer))
+            raise
 
     def _messages(self) -> list[dict]:
         messages = [{"role": "system", "content": load_persona(self.persona_path)}]

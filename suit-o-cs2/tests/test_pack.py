@@ -74,11 +74,11 @@ def test_schema_and_example_describe_version_one_without_images():
     ]
     assert set(example["lineups"][0]) == set(required)
     optional = schema["$defs"]["lineup"]["properties"]
-    assert optional["notes"] == {"type": "string"}
-    assert optional["source_url"] == {"type": "string"}
-    assert optional["source_timestamp"] == {"type": "string"}
-    assert optional["second_source_url"] == {"type": "string"}
-    assert optional["verified_by_second_source"] == {"type": "boolean"}
+    assert optional["notes"] == {"type": ["string", "null"]}
+    assert optional["source_url"] == {"type": ["string", "null"]}
+    assert optional["source_timestamp"] == {"type": ["string", "null"]}
+    assert optional["second_source_url"] == {"type": ["string", "null"]}
+    assert optional["verified_by_second_source"] == {"type": ["boolean", "null"]}
     for key in (
         "notes",
         "source_url",
@@ -364,6 +364,15 @@ def test_filters_and_map_counts_follow_the_pack_document():
     ]
     assert filter_lineups(pack, map_name="ancient") == []
     assert len(filter_lineups(pack)) == 5
+
+
+def test_null_source_timestamp_imports_as_missing():
+    row = _row(source_timestamp=None)
+    pack = parse_pack({"version": 1, "maps": ["mirage"], "lineups": [row]})
+    lineup = pack.lineups[0]
+    assert lineup.source_timestamp == ""
+    assert "source_timestamp" not in lineup.optional_keys
+    assert "source_timestamp" not in lineup.as_dict()
 
 
 def test_unknown_fields_are_kept_and_logged_once(tmp_path: Path):

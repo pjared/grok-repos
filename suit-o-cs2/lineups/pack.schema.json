@@ -55,11 +55,11 @@
           "description": "Practice-server console text. Suit-O may copy it. It is never sent to CS2."
         },
         "status": { "enum": ["draft", "verified"] },
-        "notes": { "type": "string" },
-        "source_url": { "type": "string" },
-        "source_timestamp": { "type": "string" },
-        "second_source_url": { "type": "string" },
-        "verified_by_second_source": { "type": "boolean" }
+        "notes": { "type": ["string", "null"] },
+        "source_url": { "type": ["string", "null"] },
+        "source_timestamp": { "type": ["string", "null"] },
+        "second_source_url": { "type": ["string", "null"] },
+        "verified_by_second_source": { "type": ["boolean", "null"] }
       }
     }
   }
