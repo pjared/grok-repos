@@ -12,7 +12,7 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ### Fixed
 
-- `config.local.yaml` is written only when a setting changes. A file that cannot be read is copied aside and left in place, and the window says so.
+- `config.local.yaml` is written only when a setting changes. A file that cannot be read is copied aside and left in place, and the window says so. (`fbecf8a`)
 
 ## [0.19.12] - 2026-09-27
 
