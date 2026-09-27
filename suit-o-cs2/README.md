@@ -55,15 +55,23 @@ These steps assume Windows 10 or 11 and the default Steam library path. If CS2 i
 
 5. Quit Counter-Strike 2 completely if it is running, then start it again. The game reads GSI configs at launch.
 
-6. Set the headset as the **default playback device** in Windows sound settings if you want Suit-O in that headset. Leaving `speech.output_device` blank uses that default. To target one device by name, set `output_device` to part of its playback name, such as `Headphones`. Use the speaker/headphone name, not the microphone name.
+6. Start the desktop window and leave it open while you play. Double-click `Start Suit-O GUI.vbs` in this folder (no console window). From PowerShell:
 
-7. Start Suit-O and leave the window open while you play:
+   ```powershell
+   python -m suit_o.gui
+   ```
+
+   `Start Suit-O GUI.bat` does the same thing with `pythonw`. The window shows whether the listener is up and how long it has been since CS2 last sent game state. Mute, volume, and the output device are saved back to `config.yaml`.
+
+   Pick the playback device you actually want to hear. The list is Windows' speech outputs (SAPI), for example speakers, a headset earphone, a digital output, or a monitor. A headset often shows up twice — once for game audio and once for chat — and the Windows default is not always the one that makes a sound. Choose the endpoint, then press **Test voice**. Microphones are not listed, and Suit-O still refuses a microphone or virtual-cable name if one is typed into `speech.output_device`.
+
+7. The console listener still works if you want a terminal instead of the window. Double-click `Start Suit-O.bat`, or:
 
    ```powershell
    python -m suit_o
    ```
 
-   The log line `GSI endpoint ready at http://127.0.0.1:3000/` means it is waiting. Join a match. On a new round you should see a line in the log and hear it.
+   The log line `GSI endpoint ready at http://127.0.0.1:3000/` means it is waiting. Join a match. On a new round you should see a line in the log and hear it. Leaving `speech.output_device` blank uses the Windows default playback device. To target one device by name, set `output_device` to part of its playback name, such as `Headphones`. Use the speaker or headphone name, not the microphone name.
 
 Optional voice settings in `config.yaml`:
 
@@ -73,7 +81,8 @@ Optional voice settings in `config.yaml`:
 
 ## Mute
 
-- In the Suit-O window, type `m` and press Enter. Type `m` again to unmute. Type `q` and Enter to quit.
+- In the desktop window, press **Mute**. Press **Unmute** to hear lines again. The choice is saved in `config.yaml`.
+- In the console listener, type `m` and press Enter. Type `m` again to unmute. Type `q` and Enter to quit. Console mute lasts for that run; it does not rewrite `config.yaml`.
 - Or set `mute: true` in `config.yaml` before starting.
 - Or from another terminal: `Invoke-WebRequest -Method POST http://127.0.0.1:3000/mute`
 - Status: `Invoke-WebRequest http://127.0.0.1:3000/status`
@@ -119,7 +128,9 @@ A broke freeze (under rifle-plus-helmet money: 4100 on CT, 3700 on T) uses the l
 
 **Port already in use.** Change `server.port` and the `uri` in the cfg to the same new port, then restart both Suit-O and CS2.
 
-**You hear nothing, but the log shows lines.** Check `mute`, `speech.volume`, and the Windows default playback device. The headset has to be a playback device, not the recording side of the same headset.
+**You hear nothing, but the log shows lines.** Check mute, the volume slider, and the output device. Press **Test voice** after choosing a playback device. A wireless headset can expose two outputs (game and chat) plus a microphone; pick a playback name, not the microphone. The Windows default is sometimes a different endpoint than the one you are wearing.
+
+**The desktop window opens and closes immediately.** Read `suit-o.log` in this folder. `pythonw` has no console, so startup errors are written there. A missing virtual environment is reported by the launcher itself.
 
 **The voice list is empty or tiny.** Windows 10/11 often hides newer voices from classic SAPI. Install a speech voice under Settings → Time & language → Speech. Suit-O speaks with whatever SAPI can see.
 

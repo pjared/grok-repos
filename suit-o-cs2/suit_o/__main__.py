@@ -43,7 +43,7 @@ def main(argv: list[str] | None = None) -> int:
         logger.warning("%s", warning)
 
     try:
-        app = SuitOApp(config)
+        app = SuitOApp(config, config_path=args.config)
     except NotImplementedError as exc:
         print(str(exc), file=sys.stderr)
         return 2

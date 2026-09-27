@@ -22,3 +22,17 @@ class SpeechBackend:
 
     def close(self) -> None:  # pragma: no cover - interface
         raise NotImplementedError
+
+    def set_volume(self, volume: float) -> None:
+        """Apply a volume in ``0.0`` … ``1.0``. Called on the speech thread."""
+
+        return None
+
+    def set_output_device(self, name: str) -> None:
+        """Select a playback device. An empty name uses the Windows default.
+
+        Called on the speech thread. Implementations must refuse a microphone
+        or a virtual cable into voice chat.
+        """
+
+        return None
