@@ -12,7 +12,7 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ### Fixed
 
-- Suit-O 0.19.0 lists each changelog category once, in the order Added, Changed, Removed, Fixed.
+- Suit-O 0.19.0 lists each changelog category once, in the order Added, Changed, Removed, Fixed. (`cc684dc`)
 
 ## [0.19.0] - 2026-09-27
 
