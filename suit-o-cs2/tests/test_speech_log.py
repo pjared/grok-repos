@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tempfile
 import time
 import urllib.error
 from pathlib import Path
@@ -12,6 +13,12 @@ from suit_o.gsi.payloads import make_payload
 from suit_o.gui.status import format_activity
 from suit_o.lines.provider import YamlLineProvider
 from suit_o.models import EventType, GameEvent, Utterance
+from suit_o.reload import (
+    ACTIVITY_HANDOFF_LIMIT,
+    activity_handoff_path,
+    consume_activity_handoff,
+    write_activity_handoff,
+)
 from suit_o.simulate import post_payload, simulation_config
 from suit_o.speech.stub import StubSpeechBackend
 
@@ -121,3 +128,52 @@ def test_rejected_payload_stays_in_memory_without_the_token(tmp_path: Path):
     assert not list(tmp_path.glob("speech-*.jsonl"))
     assert not (PROJECT_ROOT / "logs").exists()
     assert not list(PROJECT_ROOT.glob("speech-*.jsonl"))
+
+
+def test_activity_handoff_round_trip_deletes_the_temp_file():
+    path = activity_handoff_path()
+    temporary = path.with_name(path.name + ".tmp")
+    try:
+        secret = "suito-secret-token-9f3a"
+        written = write_activity_handoff(
+            [(1_700_000_000.0, "kill: nice"), (1_700_000_001.5, f"heard {secret}")],
+            secret=secret,
+        )
+        assert written == path
+        assert path.is_file()
+        assert path.parent == Path(tempfile.gettempdir())
+        assert PROJECT_ROOT.resolve() not in path.resolve().parents
+        body = path.read_text(encoding="utf-8")
+        assert secret not in body
+        assert "[redacted]" in body
+
+        app = SuitOApp(load_config(DEFAULT_CONFIG_PATH), backend=StubSpeechBackend())
+        app.restore_activity(consume_activity_handoff())
+        assert not path.exists()
+        assert consume_activity_handoff() == []
+        entries = app.activity()
+        assert [(entry.at, entry.message) for entry in entries] == [
+            (1_700_000_000.0, "kill: nice"),
+            (1_700_000_001.5, "heard [redacted]"),
+        ]
+        assert format_activity(entries[0]).startswith(
+            time.strftime("%H:%M:%S", time.localtime(entries[0].at))
+        )
+        app.note("Listener up")
+        assert app.activity()[0].message == "kill: nice"
+        assert app.activity()[-1].message == "Listener up"
+
+        path.write_text("{", encoding="utf-8")
+        assert consume_activity_handoff() == []
+        assert not path.exists()
+
+        write_activity_handoff([(float(index), f"line {index}") for index in range(ACTIVITY_HANDOFF_LIMIT + 40)])
+        carried = consume_activity_handoff()
+        assert len(carried) == ACTIVITY_HANDOFF_LIMIT
+        assert carried[0] == (40.0, "line 40")
+        assert carried[-1] == (float(ACTIVITY_HANDOFF_LIMIT + 39), f"line {ACTIVITY_HANDOFF_LIMIT + 39}")
+        assert not path.exists()
+        assert not temporary.exists()
+    finally:
+        path.unlink(missing_ok=True)
+        temporary.unlink(missing_ok=True)

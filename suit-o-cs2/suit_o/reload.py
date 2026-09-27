@@ -8,7 +8,10 @@ period, so a multi-file ``git pull`` does not relaunch per file.
 from __future__ import annotations
 
 import json
+import os
 import sys
+import tempfile
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -16,6 +19,8 @@ from suit_o.config import DEFAULT_CONFIG_PATH
 from suit_o.local_config import local_config_path
 
 RESTART_STATE_NAME = ".suit-o-restart.json"
+ACTIVITY_HANDOFF_NAME = "suit-o-activity-handoff.json"
+ACTIVITY_HANDOFF_LIMIT = 200
 
 
 @dataclass
@@ -214,6 +219,67 @@ def consume_restart_state(config_path: Path) -> RestartState | None:
     except OSError:
         pass
     return state
+
+
+def activity_handoff_path() -> Path:
+    """Temp file for the in-window log. It is not a saved log."""
+
+    return Path(tempfile.gettempdir()) / ACTIVITY_HANDOFF_NAME
+
+
+def write_activity_handoff(entries: Sequence[tuple[float, str]], *, secret: str = "") -> Path:
+    """Leave the current log lines where the replacement process can read them.
+
+    The file lives in the OS temp directory. The new process deletes it as
+    soon as it has read the lines.
+    """
+
+    path = activity_handoff_path()
+    hidden = secret.strip()
+    payload_entries = []
+    for at, message in list(entries)[-ACTIVITY_HANDOFF_LIMIT:]:
+        text = str(message)
+        if hidden:
+            text = text.replace(hidden, "[redacted]")
+        payload_entries.append({"at": float(at), "message": text})
+    raw = json.dumps({"entries": payload_entries}).encode("utf-8")
+    temporary = path.with_name(path.name + ".tmp")
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.write(fd, raw)
+    finally:
+        os.close(fd)
+    os.chmod(temporary, 0o600)
+    os.replace(temporary, path)
+    return path
+
+
+def consume_activity_handoff() -> list[tuple[float, str]]:
+    """Read the carried log lines once, then delete the temp file."""
+
+    path = activity_handoff_path()
+    if not path.is_file():
+        return []
+    entries: list[tuple[float, str]] = []
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        items = raw.get("entries") if isinstance(raw, dict) else None
+        if isinstance(items, list):
+            for item in items[-ACTIVITY_HANDOFF_LIMIT:]:
+                if not isinstance(item, dict):
+                    continue
+                message = item.get("message")
+                at = item.get("at")
+                if not isinstance(message, str) or isinstance(at, bool) or not isinstance(at, (int, float)):
+                    continue
+                entries.append((float(at), message))
+    except (OSError, ValueError, TypeError):
+        entries = []
+    try:
+        path.unlink()
+    except OSError:
+        pass
+    return entries
 
 
 def gui_restart_argv(config_path: Path | None) -> list[str]:

@@ -10,7 +10,7 @@ import time
 
 import yaml
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty, Full, Queue
@@ -771,6 +771,18 @@ class SuitOApp:
     def activity(self) -> tuple[Activity, ...]:
         with self._activity_lock:
             return tuple(self._activity)
+
+    def restore_activity(self, entries: Sequence[tuple[float, str]]) -> None:
+        """Put carried log lines back. Their times stay. The token stays out."""
+
+        token = self.config.server.token.strip()
+        with self._activity_lock:
+            for at, message in entries:
+                text = message
+                if token:
+                    text = text.replace(token, "[redacted]")
+                self._activity_seq += 1
+                self._activity.append(Activity(self._activity_seq, float(at), text))
 
     def snapshot(self) -> ListenerSnapshot:
         listening = self._started and not self._did_stop and self._httpd is not None

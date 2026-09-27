@@ -13,6 +13,7 @@ from pathlib import Path
 
 from suit_o.config import DEFAULT_CONFIG_PATH, PROJECT_ROOT, ConfigError, load_config
 from suit_o.local_config import migrate_user_settings
+from suit_o.reload import consume_activity_handoff, write_activity_handoff
 
 logger = logging.getLogger("suit_o")
 
@@ -64,9 +65,14 @@ def _run(config_path: Path, *, start_muted: bool) -> int:
         _show_fatal(str(exc))
         return 2
 
+    app.restore_activity(consume_activity_handoff())
     try:
         app.start(console=False)
     except OSError as exc:
+        write_activity_handoff(
+            [(entry.at, entry.message) for entry in app.activity()],
+            secret=config.server.token,
+        )
         message = (
             f"Could not listen on {config.server.host}:{config.server.port}: {exc}\n"
             "Another program is using that port, or the address is not available."

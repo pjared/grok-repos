@@ -27,6 +27,7 @@ from suit_o.reload import (
     choose_reload,
     consume_restart_state,
     gui_restart_argv,
+    write_activity_handoff,
     write_restart_state,
 )
 from suit_o.update import install_requirements, run_git_update
@@ -548,6 +549,10 @@ class SuitOWindow:
                 self.app.config_path,
                 RestartState(x=x, y=y, width=width, height=height, tab=tab, notice=notice),
             )
+        write_activity_handoff(
+            [(entry.at, entry.message) for entry in self.app.activity()],
+            secret=self.app.config.server.token,
+        )
         self.hotkeys.stop()
         if self.overlay is not None:
             self.overlay.close()
