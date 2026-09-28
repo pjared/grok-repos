@@ -682,7 +682,8 @@ class ClipsPanel:
             return ttk.Label(
                 parent,
                 text=(
-                    "The waveform needs Matplotlib. From the suit-o-cs2 folder run: "
+                    "The waveform needs Matplotlib. Tick Voice training in Installations at the "
+                    "top of the window, or from the suit-o-cs2 folder run: "
                     "python -m pip install -r requirements-voice.txt"
                 ),
                 wraplength=820,

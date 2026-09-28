@@ -14,7 +14,8 @@ from pathlib import Path
 from suit_o.voice.clips import ClipError
 
 CLIPS_INSTALL = (
-    "From the suit-o-cs2 folder run: python -m pip install -r requirements-clips.txt"
+    "Tick Recording clean-up in Installations at the top of the window, or from the "
+    "suit-o-cs2 folder run: python -m pip install -r requirements-clips.txt"
 )
 DEMUCS_INSTALL = f"Vocal separation needs Demucs. {CLIPS_INSTALL}"
 PYANNOTE_INSTALL = f"Speaker tags need pyannote.audio. {CLIPS_INSTALL}"

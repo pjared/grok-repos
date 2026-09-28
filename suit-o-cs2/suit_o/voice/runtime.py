@@ -5,7 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 INSTALL_HINT = (
-    "Optional voice cloning is not installed. From the suit-o-cs2 folder run: "
+    "Optional voice cloning is not installed. Tick Voice training in Installations at "
+    "the top of the window, or from the suit-o-cs2 folder run: "
     "python -m pip install -r requirements-voice.txt"
 )
 

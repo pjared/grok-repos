@@ -30,17 +30,22 @@ def main(argv: list[str] | None = None) -> int:
         help="Path to config.yaml (default: suit-o-cs2/config.yaml)",
     )
     parser.add_argument("--mute", action="store_true", help="Start muted")
+    parser.add_argument(
+        "--installations",
+        action="store_true",
+        help="Open the Installations window on start (the setup script uses this)",
+    )
     args = parser.parse_args(argv)
     _configure_logging()
     try:
-        return _run(args.config, start_muted=args.mute)
+        return _run(args.config, start_muted=args.mute, open_installs=args.installations)
     except Exception:
         logger.exception("Suit-O GUI failed")
         _show_fatal("Suit-O could not start.")
         return 1
 
 
-def _run(config_path: Path, *, start_muted: bool) -> int:
+def _run(config_path: Path, *, start_muted: bool, open_installs: bool = False) -> int:
     try:
         try:
             migrate_user_settings(config_path)
@@ -103,7 +108,7 @@ def _run(config_path: Path, *, start_muted: bool) -> int:
         return 2
 
     try:
-        SuitOWindow(app, restart_state=restart).run()
+        SuitOWindow(app, restart_state=restart, open_installs=open_installs).run()
     finally:
         app.stop()
     return 0

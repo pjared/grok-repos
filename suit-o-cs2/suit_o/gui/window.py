@@ -21,6 +21,7 @@ from suit_o.app import SuitOApp
 from suit_o.changelog import ChangelogError, ReleaseNotes, changes_between, parse_changelog
 from suit_o.config import PROJECT_ROOT, ConfigError
 from suit_o.local_config import local_config_path
+from suit_o.procs import launch_setup
 from suit_o.reload import (
     FileWatcher,
     RestartState,
@@ -57,7 +58,14 @@ logger = logging.getLogger(__name__)
 
 
 class SuitOWindow:
-    def __init__(self, app: SuitOApp, restart_state: RestartState | None = None) -> None:
+    def __init__(
+        self,
+        app: SuitOApp,
+        restart_state: RestartState | None = None,
+        *,
+        open_installs: bool = False,
+    ) -> None:
+        self._open_installs_on_start = open_installs
         self.app = app
         self._closed = False
         self._ui_ready = False
@@ -108,6 +116,10 @@ class SuitOWindow:
         self.update_button = ttk.Button(header, text="Update", command=self._update)
         self.update_button.pack(side="right")
         ttk.Button(header, text="What's new", command=self._open_whats_new).pack(side="right", padx=(0, 8))
+        # Shown only while something optional is missing. It hides itself once
+        # everything is installed.
+        self.installs_button = ttk.Button(header, text="Installations", command=self._open_installs)
+        self._installs_window = None
         self.update_status = ttk.Label(header, text="")
         self.update_status.pack(side="right", padx=(0, 12))
         ttk.Label(frame, text="Local CS2 companion").grid(row=1, column=0, sticky="w", pady=(0, 8))
@@ -336,8 +348,11 @@ class SuitOWindow:
         self._bind_lineup_hotkeys()
         self._restore_restart_state()
         self._refresh()
+        self._check_installs()
         if self.app.config.updates.check_on_launch:
             self._update()
+        if self._open_installs_on_start:
+            self.root.after(300, self._open_installs)
         self.root.mainloop()
 
     def _bind_lineup_hotkeys(self) -> None:
@@ -350,6 +365,11 @@ class SuitOWindow:
         if settings.hotkey_toggle:
             bindings[settings.hotkey_toggle] = self.app.lineup_toggle
         self.hotkeys.start(bindings)
+
+    def _quit_for_setup(self) -> None:
+        """Close for the setup script. It reopens Suit-O when it finishes."""
+
+        self._on_close()
 
     def _on_close(self) -> None:
         if self._closed:
@@ -672,6 +692,89 @@ class SuitOWindow:
 
     def _open_whats_new(self) -> None:
         self._show_whats_new()
+
+    def _check_installs(self) -> None:
+        """Probe optional installs off the window thread, then show or hide the button."""
+
+        def work() -> None:
+            try:
+                from suit_o.installs.components import Probes
+
+                missing = Probes().missing()
+            except Exception:
+                logger.debug("Could not check optional installs", exc_info=True)
+                missing = []
+            self._ui.call(lambda: self._show_installs_button(bool(missing)))
+
+        threading.Thread(target=work, name="suit-o-install-check", daemon=True).start()
+
+    def _show_installs_button(self, needed: bool) -> None:
+        if self._closed:
+            return
+        try:
+            if needed:
+                if not self.installs_button.winfo_ismapped():
+                    self.installs_button.pack(side="right", padx=(0, 8), before=self.update_status)
+            else:
+                self.installs_button.pack_forget()
+        except tk.TclError:
+            return
+
+    def _open_installs(self) -> None:
+        from suit_o.gui.installs import InstallsWindow
+
+        existing = self._installs_window
+        if existing is not None:
+            try:
+                existing.window.deiconify()
+                existing.window.lift()
+                return
+            except tk.TclError:
+                self._installs_window = None
+        self._installs_window = InstallsWindow(
+            self.root,
+            schedule=self._ui.call,
+            on_installed=self._installs_done,
+            on_move_python=self._move_to_python_311,
+        )
+
+    def _installs_done(self, files: list[str]) -> None:
+        """Record what installed so Update keeps it current, then reload to turn it on."""
+
+        from pathlib import Path
+
+        from suit_o.local_config import remember_installed_requirements
+
+        names = [Path(item).name for item in files]
+        if names and self.app.config_path is not None:
+            try:
+                remember_installed_requirements(self.app.config_path, names)
+            except OSError:
+                logger.debug("Could not record installed optional requirements", exc_info=True)
+        self._restart_or_defer("Installed")
+
+    def _move_to_python_311(self) -> None:
+        """Hand off to the setup script, which rebuilds Suit-O on Python 3.11."""
+
+        if self.app.restart_blocked():
+            messagebox.showinfo("Suit-O", "Finish the live round first, then try again.")
+            return
+        script = PROJECT_ROOT / "Install Suit-O.bat"
+        if not script.is_file():
+            messagebox.showerror("Suit-O", f"Could not find {script.name}. Click Update first.")
+            return
+        if not messagebox.askokcancel(
+            "Suit-O",
+            "Suit-O will close, set itself up on Python 3.11, and open again.\n\n"
+            "A setup window shows the progress. It can take several minutes.",
+        ):
+            return
+        try:
+            launch_setup(script)
+        except OSError as exc:
+            messagebox.showerror("Suit-O", f"Could not start setup.\n{exc}")
+            return
+        self._quit_for_setup()
 
     def _show_whats_new(self, old: str = "", new: str = "") -> None:
         """Open changelog sections. A range is the pull; otherwise the current version."""

@@ -10,7 +10,8 @@ import gc
 from collections.abc import Callable
 
 WHISPER_INSTALL = (
-    "Push-to-talk needs faster-whisper. From the suit-o-cs2 folder run: "
+    "Push-to-talk needs faster-whisper. Tick Push-to-talk in Installations at the top "
+    "of the window, or from the suit-o-cs2 folder run: "
     "python -m pip install -r requirements-chat.txt"
 )
 

@@ -88,6 +88,21 @@ Optional voice settings. Saving them from the window writes `config.local.yaml`;
 
 `speech.backend` may be `pyttsx3`, `clone`, or `stub`. `remote` is still refused at startup. Rate, volume, pause, pitch, and emphasis are the same fields for every backend. Chatterbox has no pitch or words-per-minute control, so pre-rendering applies pitch and rate to the waveform and maps emphasis onto Chatterbox's exaggeration control. Volume is applied when the WAV is played, on the output device from the Listener tab.
 
+## Installations
+
+The optional parts of Suit-O install from the **Installations** button at the top of the window. The button only shows while something is missing, and it hides itself once everything is installed. Tick the parts you want, then click **Install selected**:
+
+| Part | What it adds | Download |
+| --- | --- | --- |
+| Chat brain | Ollama and the `llama3.2` model, so Suit-O can answer on the Chat tab | about 3 GB |
+| Push-to-talk | faster-whisper speech to text (`requirements-chat.txt`) | about 200 MB |
+| Voice training | Chatterbox voice cloning (`requirements-voice.txt`) | about 6 GB |
+| Recording clean-up | Demucs and pyannote for Clips (`requirements-clips.txt`); ticks Voice training too | about 2 GB more |
+
+Everything runs with its console hidden, and the progress shows in the window. Models download during the install, so nothing downloads the first time you use a feature. Ollama installs with `winget`. An NVIDIA card gets the CUDA build of PyTorch first. Every other PC gets the CPU build. When it finishes, Suit-O remembers what you installed (so **Update** keeps it current) and reloads.
+
+Voice training and recording clean-up need **Python 3.11**. Chatterbox pins PyTorch and NumPy releases that have no builds for newer Python. If Suit-O runs on a newer Python, those rows say **Needs Python 3.11**, and **Move to Python 3.11** closes Suit-O and runs `Install Suit-O.bat`. That script installs Python 3.11 with `winget` when it is missing, rebuilds `.venv` on it, and reinstalls the base requirements and any optional parts this PC had. It then reopens Suit-O on Installations. The old venv is renamed until the new one works, and `config.local.yaml` and `voices/` are never touched. You can also run `Install Suit-O.bat` yourself at any time.
+
 ## Voice cloning
 
 Stock Windows voices still sound like a default SAPI voice. Voice Training is a recorder plus a zero-shot clone, not a long training run.

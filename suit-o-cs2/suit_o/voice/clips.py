@@ -15,7 +15,8 @@ from suit_o.voice.runtime import MODEL_SAMPLE_RATE
 from suit_o.voice.wav import write_wav
 
 _VOICE_INSTALL = (
-    "From the suit-o-cs2 folder run: python -m pip install -r requirements-voice.txt"
+    "Tick Voice training in Installations at the top of the window, or from the "
+    "suit-o-cs2 folder run: python -m pip install -r requirements-voice.txt"
 )
 
 # Peak after normalize. Leaves a little headroom so 16-bit PCM does not clip.
