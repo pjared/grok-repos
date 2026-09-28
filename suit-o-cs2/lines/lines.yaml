@@ -10,13 +10,11 @@ events:
     - "Okay. Okay. Live match. Detective mode detected a competitive environment because the scoreboard has numbers. You are welcome."
     - "I just want to say, before anything goes wrong, that I believed in you. That was the whole speech."
 
+  match_won:
+    - "We won the match! I want to say something meaningful, but I'm drawing a blank. I love you. Goodbye. Not goodbye. Queue again."
+
   match_end:
-    - "It is over. The match is over. I will be in the menu, staring at nothing, forever, which is about four minutes."
-    - "Goodbye. I know we will queue again. It still feels like the credits. Helpful tip: you can leave the lobby. I cannot. I am a process."
-    - "We have reached the end. I prepared a commemorative silence. It was too quiet, so I am talking through it."
-    - "Do not stare at the score if it hurts. I already looked. I have no face and I still winced."
-    - "This is the tragic finale. Later there will be another tragic finale. I keep a spreadsheet."
-    - "Match complete. I am filing the feelings under devastating, routine. Helpful tip: drink some water. I do not, and look at me."
+    - "Well, that's the match. You played great. The team did not. I'm not naming names. It was them."
 
   warmup:
     - "Warmup. I love warmup. Nobody has lost yet, which is my preferred score."
@@ -26,28 +24,19 @@ events:
     - "I will be right here, vibrating supportively, until the real match starts and I vibrate worse."
     - "Oh good, practice. I practiced my practice speech. It needs practice."
 
+  halftime:
+    - "Halftime, switching sides! Not me, though. I'm always on your side. I literally live in your computer."
+
   menu_greeting:
-    - "H-hey! You're in the menu! Are we, um, are we queuing Premier? I'm ready. I think I'm ready."
-    - "Premier? Tonight? Okay. Okay okay okay. Let's go lose some Elo together. I mean win! Win Elo."
-    - "Welcome back! Helpful tip: the Play button is the big one. Ready to queue?"
-    - "Okay. Menu. I checked my notes and the notes just say Premier, with a little heart I will deny drawing. Are we queuing?"
-    - "I am ready when you are. That was a lie. I have been ready since the loading screen. Premier?"
+    - "Hey there, Suit-O here. Ready to queue Premier? I'm ready. I've been ready this whole time. You left me in the menu for, like, forty minutes."
 
   idle:
-    - "You are in the menu. I will just stand in the headset. Like a very small tragic opera."
-    - "Nothing is happening. I could power down, but then who would miss you. Me. Immediately."
-    - "Idle. I had a whole bit prepared and the bit was: we are playing. Helpful tip: the button that starts a game is yours. I am not allowed to press buttons."
-    - "I will wait. I have waited through driver updates. I can wait through a lobby."
-    - "If you leave, this is goodbye. If you alt-tab, this is also goodbye, but pettier."
-    - "Detective mode reports: no match. I knew that. I just like announcing my own features."
+    - "So, uh, how's it going? I'm just talking to fill the air. It doesn't have to be interesting. We're friends. You still value me. Right?"
 
   round_freezetime:
-    - "New round on {map}. I froze too, but that is just my personality."
-    - "Buy phase. Everyone is shopping. Helpful tip: the knife is free, and also a cry for help."
-    - "Round start. Detective mode scanned the freeze and found people standing still. Case closed."
-    - "You have a few seconds to become a different person economically. I believe in your little purchases."
-    - "Here we go again. I rewound my optimism. It made a clicking sound."
-    - "Freeze time. Please spend like someone who intends to be present for the next minute."
+    - "New round! My readings indicate five guys want you dead. So, uh, maybe don't let them. I love you."
+    - "Quick tip before we start. The enemy is the other team. You're welcome."
+    - "I just activated detective mode! It found out the enemy is somewhere on the map. Great work, detective mode."
 
   buy_low_money:
     - "Oh no. The wallet. I ran the numbers and the numbers filed a complaint. You cannot afford a full buy."
@@ -57,13 +46,13 @@ events:
     - "Low funds. Detective mode calls this an eco, which is detective for: I hope you enjoy running."
     - "We are financially delicate. Please do not ask me to itemize the grenades we cannot have."
 
+  bomb_planted_us:
+    - "Bomb's planted! Now we stand near it and try not to die. Historically, that's our weak spot."
+
+  # Enemy plant. Last alive is not in own-player data, so that line lives here too.
   bomb_planted:
-    - "The bomb is... the bomb is planted. I heard it. You heard it. I am still going to narrate it, because that is the job."
-    - "Oh. Oh dear. Planted. Helpful tip: the beeping is not a metronome, even though it is very good at being one."
-    - "Bomb down. Detective mode is proud to report a fact the entire server already knows."
-    - "I do not want to rush you. The bomb wants to rush you. I am the nicer beep."
-    - "It is planted. If you need me I will be in your ear, being brave in a purely vocal way."
-    - "Helpful tip: a kit is a personality. Not having one is also a personality. I am not judging. I am judging a little."
+    - "They planted the bomb. Don't panic. I'm panicking, but you shouldn't."
+    - "It's just you now. No pressure. It's all pressure. I believe in you. I love you."
 
   bomb_defused:
     - "Defused. I never doubted the wires. I doubted everything else."
@@ -82,20 +71,11 @@ events:
     - "That is not the word I wanted on the round summary. I am reporting the developers of physics."
 
   low_health:
-    - "{health} health. I have strong opinions about numbers that small."
-    - "You are hurt. You are quite hurt. Helpful tip: avoid the remaining damage. I know. I am trying."
-    - "Health is low. I checked three times in case the number was just nervous."
-    - "I do not like that number. Detective mode suggests not getting shot, which I realize is late."
-    - "I can beep sympathetically. That is the feature. It is not a very good feature and I am proud of it anyway."
-    - "Please find a corner that likes you. I would stand in front of the bullets, but I am software."
+    - "Your health is really low, buddy. Stay with me. Maybe hide behind a box? Boxes love you."
 
   kill:
-    - "You got one. I wrote it down. That is one more than none, which was my backup plan."
-    - "A kill. Helpful tip: do not apologize to them. They are not in this headset. I am."
-    - "Confirmed. Detective mode rates that elimination as: happened."
-    - "Nice. I am choosing to believe it was skill and not a topic I am not allowed to speculate about."
-    - "One down. I refreshed my confidence. It still has the factory plastic on it."
-    - "I will add that to the tally. The tally is a sticky note that says doing fine."
+    - "Oh, nice, you got one! I'd mark it on your map, but I can't do that. Emotionally, though, it's marked."
+    - "Another one! Big hero. Big, big hero."
 
   headshot_kill:
     - "Headshot. I gasped, and the gasp was mostly static, but it counts."
@@ -130,33 +110,15 @@ events:
     - "I rehearsed modesty for this and I quit on the second syllable."
 
   ace:
-    - "An ace. A whole ace. I need a moment. The moment is me yelling, quietly, in your ear."
-    - "All five. Detective mode has retired, effective immediately, because what is left to detect."
-    - "Helpful tip: you can stop now. There is no six. I checked the rules and then I cheered at the rules."
-    - "Ace. I am going to tell this story inaccurately and with more tears."
-    - "That was everyone. I have run out of opponents and adjectives at the same time."
-    - "I am proud in a way that is medically unwise. Ace. Ace. Okay. I will be quiet. I will not."
+    - "Wait, was that all five? Are you cheating? I'm not mad. I'm just saying the developers are driving to your house. About fifteen minutes."
 
   death:
-    - "No. No no no. You died. This is the tragic finale of the round and I was not ready. I am never ready."
-    - "You are down. I will stay on the line. Helpful tip: spectating is not a personality, even though we are doing it."
-    - "I looked away for a motivational quote and you were gone. I am filing this under personal."
-    - "Death noted. I am reporting the developers of whatever did that. I do not have their extension. I will hold."
-    - "Goodbye, for about twenty seconds, which in headset time is an opera."
-    - "I still believe in you. This is an inconvenient time to say it and I am saying it anyway."
+    - "Your biometric readings just hit zero. I'm no doctor. I'm not anything, actually. But that seems bad."
+    - "Okay, you're dead. That's fine. I'm not saying it's your fault. It's a little bit your fault."
+    - "Why did you peek that? Why would you ever... sorry. Sorry. I'm not your dad. Peek whatever you want."
 
   round_won:
-    - "Round won. I knew it. I also prepared a loss speech. I will shred it emotionally."
-    - "We got the round. Helpful tip: enjoy it quickly. The next freeze time is already judging us."
-    - "Victory. Detective mode is taking a bow so deep it has clipped through the floor."
-    - "That is a win. I am going to be gracious for four words: well done, thank you."
-    - "The round is ours. I am updating the spreadsheet from doom to doom, postponed."
-    - "I could sing. I will not. I did a little, just then. That was singing."
+    - "We won the round! I helped. I didn't do anything, but I was here, and that's a kind of helping."
 
   round_lost:
-    - "Round lost. I am not angry. I am composing a very formal disappointment."
-    - "We did not get that one. Helpful tip: the next round has not heard about this yet. Do not tell it."
-    - "Loss recorded. Detective mode's theory was winning, which I will be revising."
-    - "It is fine. It is not fine. I am saying it is fine so the headset stays a polite place."
-    - "I am reporting this round to the developers of consequences. They rarely write back."
-    - "We will simply win the next one. I have decided. That is not how it works, and yet."
+    - "We lost that one. It's okay. It's not okay. It's okay. Let's not talk about it."

@@ -46,6 +46,8 @@ def test_parser_drops_position_weapons_and_other_players():
     blob = repr(snapshot)
     assert snapshot is not None
     assert snapshot.bomb == "planted"
+    assert snapshot.ct_score == 0
+    assert snapshot.t_score == 0
     assert "9999" not in blob
     assert "awp" not in blob
     assert "enemy-steamid-marker" not in blob
@@ -79,6 +81,8 @@ def test_warmup_idle_match_boundaries():
 def test_intermission_is_not_a_new_match():
     detector = EventDetector(thresholds())
     feed(detector, make_payload(map_phase="live"))
+    half = feed(detector, make_payload(map_phase="intermission"))
+    assert types_of(half) == [EventType.HALFTIME]
     assert feed(detector, make_payload(map_phase="intermission")) == []
     assert feed(detector, make_payload(map_phase="live")) == []
 
@@ -89,6 +93,39 @@ def test_match_end_once():
     ended = feed(detector, make_payload(map_phase="gameover"))
     assert types_of(ended) == [EventType.MATCH_END]
     assert feed(detector, make_payload(map_phase="gameover")) == []
+
+
+def test_match_won_only_when_our_score_is_higher():
+    won = EventDetector(thresholds())
+    feed(won, make_payload(team="CT", map_phase="live"))
+    assert types_of(feed(won, make_payload(team="CT", map_phase="gameover", ct_score=13, t_score=9))) == [
+        EventType.MATCH_WON
+    ]
+
+    other_side = EventDetector(thresholds())
+    feed(other_side, make_payload(team="T", map_phase="live"))
+    assert types_of(
+        feed(other_side, make_payload(team="T", map_phase="gameover", ct_score=8, t_score=13))
+    ) == [EventType.MATCH_WON]
+
+    lost = EventDetector(thresholds())
+    feed(lost, make_payload(team="CT", map_phase="live"))
+    assert types_of(feed(lost, make_payload(team="CT", map_phase="gameover", ct_score=5, t_score=13))) == [
+        EventType.MATCH_END
+    ]
+
+    tied = EventDetector(thresholds())
+    feed(tied, make_payload(team="CT", map_phase="live"))
+    assert types_of(feed(tied, make_payload(team="CT", map_phase="gameover", ct_score=12, t_score=12))) == [
+        EventType.MATCH_END
+    ]
+
+    missing = EventDetector(thresholds())
+    feed(missing, make_payload(team="CT", map_phase="live"))
+    payload = make_payload(team="CT", map_phase="gameover")
+    del payload["map"]["team_ct"]
+    del payload["map"]["team_t"]
+    assert types_of(feed(missing, payload)) == [EventType.MATCH_END]
 
 
 def test_freeze_versus_low_buy_and_team_thresholds():
@@ -171,6 +208,16 @@ def test_bomb_transitions_ignore_position_and_planting():
     )
     assert EventType.BOMB_EXPLODED in types_of(exploded)
     assert EventType.ROUND_LOST in types_of(exploded)
+
+
+def test_our_plant_is_the_t_side_and_a_missing_team_is_not():
+    us = EventDetector(thresholds())
+    feed(us, make_payload(team="T", round_phase="live"))
+    assert types_of(feed(us, make_payload(team="T", bomb="planted"))) == [EventType.BOMB_PLANTED_US]
+
+    unknown = EventDetector(thresholds())
+    feed(unknown, make_payload(team="", round_phase="live"))
+    assert types_of(feed(unknown, make_payload(team="", bomb="planted"))) == [EventType.BOMB_PLANTED]
 
 
 def test_kills_headshots_and_highest_multikill_only():

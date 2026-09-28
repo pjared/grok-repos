@@ -10,7 +10,7 @@ Suit-O runs on your PC. In-game lines use Windows' built-in speech synthesizer, 
 
 CS2 posts JSON to `http://127.0.0.1:3000` when you install the config file in this folder. Suit-O checks a shared auth token, then reacts to your own HUD state: your health, your money, your round kills, the round result, and whether the bomb was planted, defused, or exploded. Those are things you can already see or hear.
 
-Bomb coordinates and weapon lists may arrive in the payload because the config asks for the `bomb` and `player_weapons` blocks. Suit-O never reads coordinates and never subscribes to other players. It does not keep your inventory. The one weapon fact it reads is the name of the item in your hand, so the lineup overlay can tell whether you are holding a smoke, flash, molotov, incendiary, or HE. Ammo and the rest of the loadout are ignored, and that name is never spoken. A clutch (last player alive) is not detected, because that would need everyone else's alive state.
+Bomb coordinates and weapon lists may arrive in the payload because the config asks for the `bomb` and `player_weapons` blocks. Suit-O never reads coordinates and never subscribes to other players. It does not keep your inventory. The one weapon fact it reads is the name of the item in your hand, so the lineup overlay can tell whether you are holding a smoke, flash, molotov, incendiary, or HE. Ammo and the rest of the loadout are ignored, and that name is never spoken. A clutch (last player alive) is not detected, because that would need everyone else's alive state. That line is in the enemy bomb-plant list instead.
 
 ## Layout
 
@@ -157,7 +157,7 @@ python -m suit_o.simulate
 python -m suit_o.simulate --menu
 ```
 
-It exits with an error if any event fails to produce a line. A normal run ends with `All 20 events produced a line.` `--menu` posts only the main menu, twice: the greeting should be spoken once and the second heartbeat should stay quiet. Nothing is played out loud either way.
+It exits with an error if any event fails to produce a line. A normal run ends with `All 23 events produced a line.` `--menu` posts only the main menu, twice: the greeting should be spoken once and the second heartbeat should stay quiet. Nothing is played out loud either way.
 
 With CS2 itself, launch into the main menu, or finish a match so the map goes away. Suit-O asks if you are ready to queue Premier. Opening the console or chat does not count as leaving and coming back. That is once per visit, and not again for 10 minutes. **Greet me in the main menu** on the Listener tab turns it off. The choice is saved in `config.local.yaml`. `menu_greeting: false` in that file does the same thing.
 
@@ -170,7 +170,7 @@ python -m pytest
 
 ## How lines are chosen
 
-Each event has its own list in `lines/lines.yaml` (five to ten lines). Suit-O picks at random and will not repeat the same line twice in a row when it has another choice.
+Each event has its own list in `lines/lines.yaml`. Suit-O picks at random and will not repeat the same line twice in a row when it has another choice.
 
 Per-event cooldowns and a global gap (`rate_limit.min_interval_seconds`) keep it from talking over every bullet. Aces, multi-kills, the bomb, and your death sit at priority 70 or above (`preempt_min_priority`). Those can speak during the gap and can interrupt a smaller line that is already playing.
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from suit_o.models import EventType
 from suit_o.simulate import main
 
 
@@ -18,5 +19,5 @@ def test_simulator_triggers_every_event(capsys):
     code = main([])
     captured = capsys.readouterr()
     assert code == 0, captured.err
-    assert "All 20 events produced a line." in captured.out
+    assert f"All {len(EventType)} events produced a line." in captured.out
     assert "9999" not in captured.out

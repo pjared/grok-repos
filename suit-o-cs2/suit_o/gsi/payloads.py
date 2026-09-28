@@ -27,6 +27,8 @@ def make_payload(
     map_phase: str = "live",
     mode: str = "competitive",
     round_number: int = 1,
+    ct_score: int = 0,
+    t_score: int = 0,
     round_phase: str = "live",
     win_team: str | None = None,
     health: int | None = 100,
@@ -57,8 +59,8 @@ def make_payload(
             "name": map_name,
             "phase": map_phase,
             "round": round_number,
-            "team_ct": {"score": 0},
-            "team_t": {"score": 0},
+            "team_ct": {"score": ct_score},
+            "team_t": {"score": t_score},
         }
     if include_round:
         round_block: dict = {"phase": round_phase}

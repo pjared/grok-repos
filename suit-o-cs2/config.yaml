@@ -65,6 +65,7 @@ priority:
   multi_kill_4: 94
   multi_kill_3: 90
   bomb_planted: 86
+  bomb_planted_us: 86
   death: 82
   multi_kill_2: 78
   bomb_exploded: 74
@@ -72,9 +73,11 @@ priority:
   round_won: 60
   round_lost: 58
   headshot_kill: 50
+  match_won: 49
   match_end: 48
   low_health: 44
   match_start: 42
+  halftime: 40
   kill: 36
   buy_low_money: 32
   round_freezetime: 24

@@ -1,8 +1,8 @@
 """Turn a GSI JSON object into a Snapshot.
 
-Only the local player's HUD state, the public round/map phase, and the public
-bomb condition (planted, defused, exploded) are kept. Bomb coordinates are
-never read. The weapon inventory is not stored. The one exception is the name
+Only the local player's HUD state, the public round/map phase, the two team
+scores, and the public bomb condition (planted, defused, exploded) are kept.
+Bomb coordinates are never read. The weapon inventory is not stored. The one exception is the name
 of the weapon in the player's hand, which the smoke-lineup overlay uses.
 Ammo, paint, and weapon positions are ignored, and nothing from the loadout
 is passed to spoken lines.
@@ -40,6 +40,8 @@ def parse_payload(data: dict) -> Snapshot | None:
     map_name = None
     map_token = None
     map_phase = None
+    ct_score = None
+    t_score = None
     round_number = None
     if map_block is not None:
         raw_map = _as_str(map_block.get("name"))
@@ -47,6 +49,8 @@ def parse_payload(data: dict) -> Snapshot | None:
         map_token = _map_token(raw_map)
         map_phase = _lower(map_block.get("phase"))
         round_number = _as_int(map_block.get("round"))
+        ct_score = _team_score(map_block.get("team_ct"))
+        t_score = _team_score(map_block.get("team_t"))
 
     round_phase = None
     win_team = None
@@ -83,6 +87,8 @@ def parse_payload(data: dict) -> Snapshot | None:
         map_name=map_name,
         map_token=map_token,
         map_phase=map_phase,
+        ct_score=ct_score,
+        t_score=t_score,
         round_present=round_block is not None,
         round_phase=round_phase,
         round_number=round_number,
@@ -91,6 +97,14 @@ def parse_payload(data: dict) -> Snapshot | None:
         bomb=_bomb_condition(data) if bomb_known else None,
         own=own,
     )
+
+
+def _team_score(block: object) -> int | None:
+    """Scoreboard number for one side. Other team fields are ignored."""
+
+    if not isinstance(block, dict):
+        return None
+    return _as_int(block.get("score"))
 
 
 def _bomb_condition(data: dict) -> str | None:

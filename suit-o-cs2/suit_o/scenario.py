@@ -62,8 +62,9 @@ def build_scenario(token: str, steamid: str = LOCAL_STEAM_ID) -> list[dict]:
     add(round_kills=5, round_killhs=1, health=100)
     # Damage into the low-health band.
     add(round_kills=5, round_killhs=1, health=22)
-    # Public plant. Position is attached and must be ignored.
+    # Our plant. Only the T side plants, and the position must be ignored.
     add(
+        team="T",
         round_kills=5,
         round_killhs=1,
         health=22,
@@ -79,6 +80,16 @@ def build_scenario(token: str, steamid: str = LOCAL_STEAM_ID) -> list[dict]:
         health=0,
         deaths=1,
         bomb=None,
+    )
+    # Halftime. Coming back to live must not look like a new match.
+    add(
+        map_phase="intermission",
+        round_phase="over",
+        round_number=1,
+        health=0,
+        deaths=1,
+        round_kills=5,
+        round_killhs=1,
     )
     # New round, pistol money: low-buy line instead of the generic freeze line.
     add(
@@ -128,4 +139,17 @@ def build_scenario(token: str, steamid: str = LOCAL_STEAM_ID) -> list[dict]:
         bomb="exploded",
     )
     add(map_phase="gameover", round_phase="over", round_number=3, health=80, round_kills=0)
+    # Leave, then finish a second match ahead on the scoreboard.
+    add(include_map=False, include_round=False, activity="menu", health=100, money=8000)
+    add(map_phase="live", round_phase="live", round_number=1, team="CT", money=8000, health=100)
+    add(
+        map_phase="gameover",
+        round_phase="live",
+        round_number=1,
+        team="CT",
+        health=100,
+        round_kills=0,
+        ct_score=13,
+        t_score=5,
+    )
     return steps

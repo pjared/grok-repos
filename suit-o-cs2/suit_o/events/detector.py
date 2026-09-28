@@ -77,10 +77,17 @@ class EventDetector:
 
         if new_phase == "warmup" and self._map_phase != "warmup":
             events.append(self._event(EventType.WARMUP))
+        if new_phase == "intermission" and self._map_phase != "intermission":
+            events.append(self._event(EventType.HALFTIME))
         if new_phase == "live" and self._map_phase not in {"live", "intermission"}:
             events.append(self._event(EventType.MATCH_START))
         if new_phase == "gameover" and self._map_phase != "gameover":
-            events.append(self._event(EventType.MATCH_END))
+            kind = (
+                EventType.MATCH_WON
+                if _our_score_is_higher(snap, self._own)
+                else EventType.MATCH_END
+            )
+            events.append(self._event(kind))
 
         if snap.own is not None:
             merged = _merge_own(self._own, snap.own)
@@ -135,13 +142,19 @@ class EventDetector:
     def _bomb_events(self, snap: Snapshot) -> list[DetectedEvent]:
         if not snap.bomb_known or snap.bomb == self._bomb:
             return []
-        kind = {
-            "planted": EventType.BOMB_PLANTED,
-            "defused": EventType.BOMB_DEFUSED,
-            "exploded": EventType.BOMB_EXPLODED,
-        }.get(snap.bomb or "")
-        if kind is None:
-            return []
+        bomb = snap.bomb or ""
+        if bomb == "planted":
+            # Only the T side plants. CT means the other team planted.
+            # A missing team is not treated as our plant.
+            team = _team(snap, self._own)
+            kind = EventType.BOMB_PLANTED_US if team == "T" else EventType.BOMB_PLANTED
+        else:
+            kind = {
+                "defused": EventType.BOMB_DEFUSED,
+                "exploded": EventType.BOMB_EXPLODED,
+            }.get(bomb)
+            if kind is None:
+                return []
         return [self._event(kind, self._own_after(snap))]
 
     def _combat_events(
@@ -300,6 +313,22 @@ def _money(snap: Snapshot, own: OwnPlayer | None) -> int | None:
     if own is not None:
         return own.money
     return None
+
+
+def _our_score_is_higher(snap: Snapshot, own: OwnPlayer | None) -> bool:
+    """True when the scoreboard already shows our side ahead.
+
+    A tie, a loss, or a missing score stays on the generic match-end line.
+    """
+
+    team = _team(snap, own)
+    ct_score = snap.ct_score
+    t_score = snap.t_score
+    if team not in {"CT", "T"} or ct_score is None or t_score is None:
+        return False
+    ours = ct_score if team == "CT" else t_score
+    theirs = t_score if team == "CT" else ct_score
+    return ours > theirs
 
 
 def _team(snap: Snapshot, own: OwnPlayer | None) -> str | None:

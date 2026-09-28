@@ -215,6 +215,7 @@ def test_match_playback_uses_only_prerendered_files(tmp_path: Path):
 
     tuned = VoiceTuning(voice="Suit-O", rate=160, pitch=2, pause_ms=40, emphasis="strong")
     assert cache_key("Hello", VoiceTuning()) != cache_key("Hello", tuned)
+    assert cache_key("Hello", VoiceTuning()) != cache_key("A different line", VoiceTuning())
     backend.apply_tuning(tuned)
     backend.prerender(["Hello"], wait=True)
     assert calls[-1] == "strong:Hello"

@@ -11,16 +11,19 @@ class EventType(str, Enum):
 
     Clutch is intentionally absent. Own-player GSI data does not include a
     reliable count of alive teammates, and Suit-O does not subscribe to
-    all-player data.
+    all-player data. The last-alive line is filed under the enemy bomb plant.
     """
 
     MATCH_START = "match_start"
+    MATCH_WON = "match_won"
     MATCH_END = "match_end"
     WARMUP = "warmup"
+    HALFTIME = "halftime"
     IDLE = "idle"
     MENU_GREETING = "menu_greeting"
     ROUND_FREEZETIME = "round_freezetime"
     BUY_LOW_MONEY = "buy_low_money"
+    BOMB_PLANTED_US = "bomb_planted_us"
     BOMB_PLANTED = "bomb_planted"
     BOMB_DEFUSED = "bomb_defused"
     BOMB_EXPLODED = "bomb_exploded"
@@ -72,6 +75,8 @@ class Snapshot:
     map_name: str | None = None
     map_token: str | None = None
     map_phase: str | None = None
+    ct_score: int | None = None
+    t_score: int | None = None
     round_present: bool = False
     round_phase: str | None = None
     round_number: int | None = None

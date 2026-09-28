@@ -10,6 +10,14 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+### Added
+
+- Halftime, a match win, and which side planted the bomb, using the side, score, and intermission the game already sends.
+
+### Changed
+
+- Stock lines for the menu, idle chat, round start, a kill, an ace, low health, death, a bomb plant, and the end of a round or match. The last-alive line shares the enemy bomb plant, because own-player data has no alive teammate count.
+
 ## [0.19.17] - 2026-09-27
 
 ### Fixed
