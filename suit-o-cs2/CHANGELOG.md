@@ -12,7 +12,7 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ### Fixed
 
-- The chat panel test expects Hold to talk to be enabled when faster-whisper is installed, and disabled when it is not.
+- The chat panel test expects Hold to talk to be enabled when faster-whisper is installed, and disabled when it is not. (`afec94b`)
 
 ## [0.19.16] - 2026-09-27
 
