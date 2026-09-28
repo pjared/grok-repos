@@ -10,6 +10,8 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-09-28
+
 ### Added
 
 - A Build voice button on the Clips page, so a voice made from uploaded clips can be built there. (`7e55076`)
