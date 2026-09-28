@@ -10,6 +10,8 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-09-27
+
 ### Added
 
 - Halftime, a match win, and which side planted the bomb, using the side, score, and intermission the game already sends. (`b77296e`)
