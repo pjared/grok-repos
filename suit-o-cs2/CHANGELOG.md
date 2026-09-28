@@ -10,6 +10,14 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+### Added
+
+- Chattiness on the Voice tab: Quiet (big moments and the match result only), Normal, and Chatty (every event). It saves as soon as you pick it and also sets how long chat replies are. (`024f0ee`)
+
+### Changed
+
+- Suit-O starts on Normal chattiness, which skips round-start, warmup, and idle chatter and leaves more room between small lines. Pick Chatty to hear every event as before. (`024f0ee`)
+
 ## [0.26.0] - 2026-09-28
 
 ### Added
