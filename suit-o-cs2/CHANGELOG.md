@@ -10,6 +10,8 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+## [0.23.2] - 2026-09-28
+
 ### Fixed
 
 - Voice Training uploads and Clips no longer say ffmpeg is missing. The ffmpeg that Suit-O uses now installs with the base requirements, so Update adds it. (`35baaf1`)
