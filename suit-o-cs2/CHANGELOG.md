@@ -10,6 +10,10 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+### Fixed
+
+- Update no longer opens Command Prompt windows. git, pip, and ffmpeg run with their console hidden on Windows. (`883edbf`)
+
 ## [0.23.0] - 2026-09-27
 
 ### Added
