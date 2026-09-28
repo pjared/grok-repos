@@ -10,6 +10,14 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+### Changed
+
+- The Update button sits at the top of the window, to the right of What's new. (`e5a9c1b`)
+
+### Fixed
+
+- Reloading after an update no longer opens a console window on Windows. (`e5a9c1b`)
+
 ## [0.23.2] - 2026-09-28
 
 ### Fixed
