@@ -30,7 +30,7 @@ from suit_o.chat.persona import load_persona
 from suit_o.chat.session import PAUSED, ChatSession
 from suit_o.chat.stt import WHISPER_INSTALL, SttError, transcribe
 from suit_o.config import DEFAULT_CONFIG_PATH, load_config
-from suit_o.gui.chat import VRAM_NOTE, ChatPanel
+from suit_o.gui.chat import MIC_IDLE, MIC_LIVE, VRAM_NOTE, ChatPanel
 from suit_o.local_config import local_config_path, store_personal_settings
 from suit_o.reload import change_kind
 from suit_o.speech.stub import StubSpeechBackend
@@ -566,5 +566,56 @@ def test_push_to_talk_sends_what_it_heard_and_waits_while_suit_o_is_answering(mo
         assert panel.entry.get() == "hold on"
         assert "still answering" in panel.status.cget("text")
         assert "hold on" not in panel.history.get("1.0", "end")
+    finally:
+        root.destroy()
+
+
+def test_mic_light_is_green_only_while_push_to_talk_is_held(monkeypatch):
+    class _App:
+        config_path = None
+
+        def match_is_live(self) -> bool:
+            return False
+
+        def speak_chat(self, _text: str) -> None:
+            return None
+
+        def interrupt_chat(self) -> None:
+            return None
+
+    queued: list = []
+    root = open_tk_or_skip()
+    try:
+        monkeypatch.setattr("suit_o.gui.chat.whisper_available", lambda: True)
+        monkeypatch.setattr("suit_o.gui.chat._record_until", lambda cancel: cancel.wait(2) and [])
+        panel = ChatPanel(
+            ttk.Frame(root),
+            _App(),
+            schedule=queued.append,
+            threaded=False,
+            generate=lambda _messages: iter(("Ok.",)),
+        )
+        idle_text, idle_color, _ = MIC_IDLE
+        live_text, live_color, _ = MIC_LIVE
+        assert panel.mic_light.cget("text") == idle_text
+        assert panel.mic_light.cget("background") == idle_color
+
+        held = {"down": True}
+        panel._key_down = lambda _key: held["down"]
+        panel.poll_hotkey()
+        assert panel.mic_light.cget("text") == live_text
+        assert panel.mic_light.cget("background") == live_color
+
+        held["down"] = False
+        panel.poll_hotkey()
+        assert panel.mic_light.cget("text") == idle_text
+        assert panel.mic_light.cget("background") == idle_color
+        for _ in range(40):
+            if queued:
+                break
+            root.after(50)
+        for callback in queued:
+            callback()
+        assert panel.mic_light.cget("background") == idle_color
     finally:
         root.destroy()

@@ -34,6 +34,9 @@ _HINT = (
     "A live round pauses chat. The menu, warmup, and the time between matches stay open."
 )
 VRAM_NOTE = "Live chat with CS2 open needs roughly 7 to 9 GB of VRAM."
+# The mic light next to Hold to talk. Green only while the key or button is held.
+MIC_IDLE = ("Mic off", "#d9d9d9", "#333333")
+MIC_LIVE = ("Listening", "#2e9d4a", "#ffffff")
 
 
 class ChatPanel:
@@ -83,18 +86,21 @@ class ChatPanel:
 
         talk = ttk.Frame(parent)
         talk.grid(row=3, column=0, sticky="ew", pady=(8, 0))
-        talk.columnconfigure(1, weight=1)
+        talk.columnconfigure(2, weight=1)
         self.talk_button = ttk.Button(talk, text="Hold to talk")
         self.talk_button.grid(row=0, column=0, sticky="w")
         self.talk_button.bind("<ButtonPress-1>", self._talk_down)
         self.talk_button.bind("<ButtonRelease-1>", self._talk_up)
+        self.mic_light = tk.Label(talk, width=10, padx=6, pady=2, relief="flat")
+        self.mic_light.grid(row=0, column=1, sticky="w", padx=(8, 0))
         self.talk_hint = ttk.Label(talk, wraplength=640, justify="left")
-        self.talk_hint.grid(row=0, column=1, sticky="w", padx=(8, 0))
+        self.talk_hint.grid(row=0, column=2, sticky="w", padx=(8, 0))
         self._talk_cancel = threading.Event()
         self._talking = False
         self._ptt_monitor = PttMonitor()
         self._key_down = key_is_down
         self._ptt_job: str | None = None
+        self._paint_mic(False)
 
         ptt = ttk.Frame(parent)
         ptt.grid(row=4, column=0, sticky="ew", pady=(8, 0))
@@ -428,6 +434,7 @@ class ChatPanel:
             return
         self._talk_cancel.clear()
         self._talking = True
+        self._paint_mic(True)
         self._idle.touch(time.monotonic())
         self.status.configure(text="Listening...")
         self._warm_up()
@@ -445,9 +452,20 @@ class ChatPanel:
 
     def _talk_up(self, _event: object) -> None:
         self._talk_cancel.set()
+        self._paint_mic(False)
+
+    def _paint_mic(self, live: bool) -> None:
+        """Green while push-to-talk is held, grey otherwise."""
+
+        text, background, foreground = MIC_LIVE if live else MIC_IDLE
+        try:
+            self.mic_light.configure(text=text, background=background, foreground=foreground)
+        except tk.TclError:
+            return
 
     def _talk_done(self, samples: list[float], error: str) -> None:
         self._talking = False
+        self._paint_mic(False)
         if error:
             self.status.configure(text=error)
             return
