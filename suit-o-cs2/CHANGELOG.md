@@ -10,6 +10,8 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-09-27
+
 ### Changed
 
 - Four stock lines, for the menu greeting, idle chat, a kill, and an ace, are reworded so they do not match the game's dialogue. (`e9a613c`)
