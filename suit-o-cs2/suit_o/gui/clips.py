@@ -39,7 +39,8 @@ _SEEK = 0.1
 
 
 class ClipsPanel:
-    def __init__(self, parent: ttk.Frame, app: SuitOApp, *, schedule) -> None:
+    def __init__(self, parent: ttk.Frame, app: SuitOApp, *, schedule, on_build=None) -> None:
+        self._on_build = on_build
         self.app = app
         self._schedule = schedule
         self.samples: list[float] = []
@@ -224,6 +225,11 @@ class ClipsPanel:
         ttk.Button(library_buttons, text="Delete clip", command=self.delete_clip).grid(row=0, column=4, padx=(6, 0))
         self.duration_label = ttk.Label(library_buttons, text="Included: 0.0s")
         self.duration_label.grid(row=0, column=5, sticky="w", padx=(12, 0))
+        library_buttons.columnconfigure(6, weight=1)
+        self.build_button = ttk.Button(library_buttons, text="Build voice", command=self.build_voice)
+        self.build_button.grid(row=0, column=7, sticky="e", padx=(12, 0))
+        if self._on_build is None:
+            self.build_button.state(["disabled"])
 
         self.status = ttk.Label(parent, wraplength=820, justify="left")
         self.status.grid(row=11, column=0, sticky="ew", pady=(6, 0))
@@ -657,6 +663,14 @@ class ClipsPanel:
             if clip.id == clip_id:
                 return clip
         return None
+
+    def build_voice(self) -> None:
+        """Build a cloned voice from this library's included clips."""
+
+        if self._on_build is None:
+            return
+        self.pause()
+        self._on_build(self.voice.get().strip() or "Suit-O")
 
     def _transcript(self) -> str:
         return self.transcript.get("1.0", "end").strip()

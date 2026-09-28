@@ -482,11 +482,21 @@ class TrainingPanel:
         self._paint()
         self.status.configure(text=" ".join(bits))
 
-    def build(self) -> None:
+    def build(self, name: str | None = None) -> None:
+        """Build a voice from script takes and included library clips.
+
+        The Clips page passes its voice name, so a voice made only from clips
+        builds without visiting the Script page.
+        """
+
         if self.session.state != "idle":
             messagebox.showerror("Suit-O", "Stop recording or playback before building")
             return
+        if name is not None and name.strip():
+            self.name.set(name.strip())
         name = self.name.get().strip() or "Suit-O"
+        if not self._require_runtime():
+            return
         from suit_o.voice.library import included_wavs
 
         extras = included_wavs(self.app.voices_dir, name)

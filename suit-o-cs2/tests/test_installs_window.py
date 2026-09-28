@@ -150,3 +150,64 @@ def test_header_button_shows_from_the_start_and_hides_once_everything_is_install
     finally:
         window.root.destroy()
         app.stop()
+
+
+def _window(tmp_path):
+    import shutil
+
+    from suit_o.app import SuitOApp
+    from suit_o.config import DEFAULT_CONFIG_PATH, load_config
+    from suit_o.gui.window import SuitOWindow
+    from suit_o.speech.stub import StubSpeechBackend
+
+    probe = open_tk_or_skip()
+    probe.destroy()
+    config = tmp_path / "config.yaml"
+    shutil.copy(DEFAULT_CONFIG_PATH, config)
+    shutil.copytree(DEFAULT_CONFIG_PATH.parent / "lines", tmp_path / "lines")
+    app = SuitOApp(load_config(config), backend=StubSpeechBackend(), config_path=config, voices_dir=tmp_path / "voices")
+    return app, SuitOWindow(app)
+
+
+def test_clips_page_has_build_voice_and_it_builds_with_the_clips_voice_name(tmp_path, monkeypatch):
+    app, window = _window(tmp_path)
+    try:
+        clips = window.clips_panel
+        assert clips is not None
+        assert clips.build_button.cget("text") == "Build voice"
+        built: list[str] = []
+        if window.training_panel is not None:
+            monkeypatch.setattr(window.training_panel, "build", lambda name=None: built.append(name))
+            clips.voice.set("Gravel")
+            clips.build_voice()
+            assert built == ["Gravel"]
+        else:
+            shown: list[str] = []
+            monkeypatch.setattr("suit_o.gui.window.messagebox.showinfo", lambda _t, text: shown.append(text))
+            clips.build_voice()
+            assert "Installations" in shown[0]
+    finally:
+        window.root.destroy()
+        app.stop()
+
+
+def test_a_new_voice_can_be_switched_on_right_after_it_is_built(tmp_path, monkeypatch):
+    app, window = _window(tmp_path)
+    try:
+        calls: list[str] = []
+        monkeypatch.setattr(app, "apply_saved_voice", lambda tuning, label: calls.append(label) or tuning)
+        monkeypatch.setattr(app, "save_preferences", lambda: calls.append("saved"))
+        monkeypatch.setattr(app, "prerender_profile", lambda name: calls.append(f"prerender {name}"))
+        monkeypatch.setattr(window.voice_panel, "show", lambda tuning: None)
+
+        monkeypatch.setattr("suit_o.gui.window.messagebox.askyesno", lambda *_a: False)
+        window._on_profile_built("Suit-O")
+        assert calls == ["prerender Suit-O"]
+
+        calls.clear()
+        monkeypatch.setattr("suit_o.gui.window.messagebox.askyesno", lambda *_a: True)
+        window._on_profile_built("Suit-O")
+        assert calls == ["Clone: Suit-O", "saved"]
+    finally:
+        window.root.destroy()
+        app.stop()

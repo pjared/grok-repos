@@ -213,6 +213,7 @@ class SuitOWindow:
                 clips,
                 self.app,
                 schedule=self._ui.call,
+                on_build=self._build_from_clips,
             )
         except Exception:
             logger.exception("Clips could not load")
@@ -242,10 +243,52 @@ class SuitOWindow:
         self.training_book.select(self._clips_tab)
         self.clips_panel.load_file(path)
 
+    def _build_from_clips(self, name: str) -> None:
+        panel = self.training_panel
+        if panel is None:
+            messagebox.showinfo(
+                "Suit-O",
+                "Building a voice needs Voice training. Tick it in Installations at the top of the window.",
+            )
+            return
+        panel.build(name)
+
     def _on_profile_built(self, name: str) -> None:
         self.voice_panel.reload_voices()
         self._record_profile(name)
+        if self._offer_voice_switch(name):
+            return
         self.app.prerender_profile(name)
+
+    def _offer_voice_switch(self, name: str) -> bool:
+        """Ask to make the new voice Suit-O's voice. Returns True when it switched.
+
+        Switching installs the clone backend, which pre-renders the stock lines
+        itself, so the caller skips its own pre-render.
+        """
+
+        from suit_o.voice.profile import clone_label
+
+        label = clone_label(name)
+        current = self.app.config.speech
+        if current.backend == "clone" and current.voice.strip().casefold() == name.strip().casefold():
+            return False
+        if not messagebox.askyesno(
+            "Suit-O",
+            f"{label} is built. Use it as Suit-O's voice now?\n\n"
+            "In-game lines and chat will use it. You can change this on the Voice tab.",
+        ):
+            return False
+        try:
+            applied = self.app.apply_saved_voice(self.app.current_tuning(), label)
+            self.app.save_preferences()
+        except Exception as exc:
+            messagebox.showerror("Suit-O", f"Could not switch to {label}.\n{exc}")
+            return False
+        self.voice_panel.reload_voices()
+        self.voice_panel.show(applied)
+        self.app.note(f"Suit-O now speaks with {label}.")
+        return True
 
     def _record_profile(self, name: str) -> None:
         self.app.note(f"Cloned voice saved: {name}")
