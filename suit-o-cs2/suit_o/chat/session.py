@@ -10,6 +10,9 @@ from pathlib import Path
 from suit_o.chat.persona import PERSONA_PATH, load_persona
 
 PAUSED = "paused during match"
+# Turns sent to the model with each message. Older turns stay on screen but are
+# not sent, so a long chat does not keep getting slower to answer.
+MAX_CONTEXT_TURNS = 16
 _SENTENCE = re.compile(r"[.!?]+(?:\s+|$)")
 
 
@@ -99,7 +102,8 @@ class ChatSession:
 
     def _messages(self) -> list[dict]:
         messages = [{"role": "system", "content": load_persona(self.persona_path)}]
-        messages.extend({"role": turn.role, "content": turn.text} for turn in self.turns)
+        recent = self.turns[-MAX_CONTEXT_TURNS:]
+        messages.extend({"role": turn.role, "content": turn.text} for turn in recent)
         return messages
 
 

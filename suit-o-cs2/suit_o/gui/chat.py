@@ -15,9 +15,16 @@ from tkinter import ttk
 from suit_o.app import SuitOApp
 from suit_o.chat.hotkey import PttMonitor, key_is_down, normalize_ptt_key, voice_key_warning
 from suit_o.chat.idle import IdleRelease
-from suit_o.chat.llm import ChatError, load_chat_settings, release_model, stream_reply
+from suit_o.chat.llm import ChatError, load_chat_settings, release_model, stream_reply, warm_model
 from suit_o.chat.session import PAUSED, ChatSession
-from suit_o.chat.stt import WHISPER_INSTALL, SttError, release_stt, transcribe, whisper_available
+from suit_o.chat.stt import (
+    WHISPER_INSTALL,
+    SttError,
+    preload_stt,
+    release_stt,
+    transcribe,
+    whisper_available,
+)
 from suit_o.lineups.hotkeys import HotkeyError
 from suit_o.local_config import store_personal_settings
 
@@ -204,6 +211,12 @@ class ChatPanel:
 
     def _release_resident(self) -> None:
         release_stt()
+        release_voice = getattr(self.app, "release_chat_voice", None)
+        if release_voice is not None:
+            try:
+                release_voice()
+            except Exception:
+                pass
         if self._on_release is not None:
             self._on_release()
             return
@@ -285,8 +298,11 @@ class ChatPanel:
         except tk.TclError:
             return
 
-    def fill_from_speech(self, samples: list[float], sample_rate: int) -> None:
-        """Put a transcript in the box. Tests pass samples and a fake transcriber."""
+    def fill_from_speech(self, samples: list[float], sample_rate: int, *, send: bool = False) -> None:
+        """Put a transcript in the box, and send it when ``send`` is set.
+
+        Tests pass samples and a fake transcriber.
+        """
 
         if self.app.match_is_live():
             self.sync_paused(True)
@@ -296,10 +312,43 @@ class ChatPanel:
         except SttError as exc:
             self.status.configure(text=str(exc))
             return
-        if text:
-            self.entry.configure(state="normal")
-            self.entry.delete(0, "end")
-            self.entry.insert(0, text)
+        self._heard(text, "", send=send)
+
+    def _heard(self, text: str, error: str, *, send: bool) -> None:
+        if error:
+            self.status.configure(text=error)
+            return
+        if self.app.match_is_live():
+            self.sync_paused(True)
+            return
+        if not text:
+            self.status.configure(text="Didn't catch that.")
+            return
+        self.status.configure(text="")
+        self.entry.configure(state="normal")
+        self.entry.delete(0, "end")
+        self.entry.insert(0, text)
+        if not send:
+            return
+        if self._busy:
+            self.status.configure(text="Suit-O is still answering. Press Enter to send this.")
+            return
+        self.send()
+
+    def _warm_up(self) -> None:
+        """Load the speech and chat models while the user is still talking."""
+
+        if self._generate_override is not None or not self._threaded:
+            return
+
+        def run() -> None:
+            preload_stt()
+            try:
+                warm_model(load_chat_settings(getattr(self.app, "config_path", None)))
+            except Exception:
+                return
+
+        threading.Thread(target=run, name="suit-o-chat-warm", daemon=True).start()
 
     def _generate(self, messages: list[dict]) -> Iterator[str]:
         if self._generate_override is not None:
@@ -340,7 +389,7 @@ class ChatPanel:
     def _paint_talk(self) -> None:
         if whisper_available():
             self.talk_button.state(["!disabled"])
-            self.talk_hint.configure(text="Hold the button and talk. Letting go types what you said.")
+            self.talk_hint.configure(text="Hold the button and talk. Letting go sends what you said.")
             return
         self.talk_button.state(["disabled"])
         self.talk_hint.configure(text=WHISPER_INSTALL)
@@ -354,6 +403,7 @@ class ChatPanel:
         self._talking = True
         self._idle.touch(time.monotonic())
         self.status.configure(text="Listening...")
+        self._warm_up()
 
         def run() -> None:
             samples: list[float] = []
@@ -377,7 +427,27 @@ class ChatPanel:
         if not samples:
             self.status.configure(text="")
             return
-        self.fill_from_speech(samples, 16000)
+        if not self._threaded:
+            self.fill_from_speech(samples, 16000, send=True)
+            return
+        if self.app.match_is_live():
+            self.sync_paused(True)
+            return
+        self.status.configure(text="Hearing you...")
+        transcriber = getattr(self, "_transcriber", None)
+
+        def run() -> None:
+            text = ""
+            problem = ""
+            try:
+                text = transcribe(samples, 16000, transcriber=transcriber)
+            except SttError as exc:
+                problem = str(exc)
+            except Exception as exc:
+                problem = f"Could not hear that clip. {exc}"
+            self._schedule(lambda: self._heard(text, problem, send=True))
+
+        threading.Thread(target=run, name="suit-o-chat-stt", daemon=True).start()
 
     def set_transcriber(self, transcriber) -> None:
         """Tests inject this so push-to-talk never loads a model."""

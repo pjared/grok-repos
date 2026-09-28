@@ -26,6 +26,7 @@ from suit_o.models import EventType, GameEvent, Utterance
 from suit_o.lineups.deck import DeckView, LineupDeck
 from suit_o.preferences import clamp_volume
 from suit_o.speech.backend import SpeechBackend
+from suit_o.speech.chat_render import ChatRenderer
 from suit_o.speech.devices import (
     list_output_device_names,
     resolve_output_device,
@@ -158,6 +159,7 @@ class SuitOApp:
         self._lines_stamp: str | None = None
         self._lines_checked = 0.0
         self._renderers: list[CloneSpeechBackend] = []
+        self._chat_renderer = ChatRenderer()
         self._on_settings_saved: Callable[[], None] | None = None
 
     def start(self, *, console: bool = False) -> None:
@@ -626,7 +628,24 @@ class SuitOApp:
     def interrupt_chat(self) -> None:
         """Stop chat audio without shutting down the speech thread."""
 
+        self._chat_renderer.discard()
         self.speech.interrupt()
+
+    def release_chat_voice(self) -> None:
+        """Drop queued chat renders and unload the cloned-voice model.
+
+        Chat keeps the model loaded between sentences. The chat tab calls this
+        when it goes idle or a round goes live, so a match does not hold the GPU.
+        """
+
+        self._chat_renderer.discard()
+        if self.config.speech.backend != "clone":
+            return
+        try:
+            from suit_o.voice.engine import release_model
+        except ImportError:
+            return
+        release_model()
 
     def _speak_chat_clone(self, line: str) -> None:
         from suit_o.voice.runtime import runtime_status
@@ -652,6 +671,8 @@ class SuitOApp:
         preview_backend = self._backend_factory(preview_settings)
         if isinstance(preview_backend, CloneSpeechBackend):
             preview_backend.allow_live_synthesis()
+            preview_backend.keep_model_loaded()
+            preview_backend.use_rendered(self._chat_renderer.render(line, preview_backend.render_live))
         self.speech.preview_with(line, tuning, preview_backend)
 
     def test_voice(self, text: str | None = None) -> str:
@@ -959,6 +980,7 @@ class SuitOApp:
             pass
         if self._worker is not None:
             self._worker.join(timeout=2)
+        self._chat_renderer.close()
         self.speech.stop()
         if self._http_thread is not None:
             self._http_thread.join(timeout=2)

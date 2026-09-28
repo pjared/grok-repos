@@ -48,6 +48,21 @@ def transcribe(
     return _faster_whisper(samples, sample_rate).strip()
 
 
+def preload_stt() -> bool:
+    """Load the speech model now, while the user is still holding the key.
+
+    Returns False when faster-whisper is not installed or the model cannot load.
+    """
+
+    if not whisper_available():
+        return False
+    try:
+        _whisper_model()
+    except Exception:
+        return False
+    return True
+
+
 def release_stt() -> None:
     """Drop the cached speech model so it is not sitting in VRAM."""
 
@@ -69,14 +84,26 @@ def release_stt() -> None:
 def _faster_whisper(samples: list[float], sample_rate: int) -> str:
     """Run faster-whisper. Not used by tests."""
 
+    model = _whisper_model()
+    # One beam and no carried-over context: a push-to-talk clip is a single
+    # short phrase, and beam search mostly adds delay.
+    segments, _info = model.transcribe(
+        _pcm(samples),
+        language="en",
+        beam_size=1,
+        condition_on_previous_text=False,
+    )
+    return " ".join(segment.text.strip() for segment in segments)
+
+
+def _whisper_model():
     global _model
     from faster_whisper import WhisperModel
 
     if _model is None:
         device, compute = _stt_device()
         _model = WhisperModel("base", device=device, compute_type=compute)
-    segments, _info = _model.transcribe(_pcm(samples), language="en")
-    return " ".join(segment.text.strip() for segment in segments)
+    return _model
 
 
 def _stt_device() -> tuple[str, str]:

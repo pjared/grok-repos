@@ -456,3 +456,49 @@ def test_chat_ptt_key_is_saved_locally_and_the_panel_warns(tmp_path: Path, monke
         assert panel._ptt_monitor.held is False
     finally:
         root.destroy()
+
+
+def test_push_to_talk_sends_what_it_heard_and_waits_while_suit_o_is_answering(monkeypatch):
+    spoken: list[str] = []
+
+    class _App:
+        config_path = None
+
+        def match_is_live(self) -> bool:
+            return False
+
+        def speak_chat(self, text: str) -> None:
+            spoken.append(text)
+
+        def interrupt_chat(self) -> None:
+            return None
+
+    root = open_tk_or_skip()
+    try:
+        monkeypatch.setattr("suit_o.gui.chat.whisper_available", lambda: True)
+        panel = ChatPanel(
+            ttk.Frame(root),
+            _App(),
+            schedule=lambda callback: callback(),
+            threaded=False,
+            generate=lambda _messages: iter(("Oh! Hi.",)),
+        )
+        assert "sends what you said" in panel.talk_hint.cget("text")
+        panel.set_transcriber(lambda _samples, _rate: "are you there")
+        panel._talk_done([0.1, -0.1], "")
+        shown = panel.history.get("1.0", "end")
+        assert "You: are you there" in shown
+        assert spoken == ["Oh!", "Hi."]
+
+        panel.set_transcriber(lambda _samples, _rate: "")
+        panel._talk_done([0.1], "")
+        assert panel.status.cget("text") == "Didn't catch that."
+
+        panel._busy = True
+        panel.set_transcriber(lambda _samples, _rate: "hold on")
+        panel._talk_done([0.1], "")
+        assert panel.entry.get() == "hold on"
+        assert "still answering" in panel.status.cget("text")
+        assert "hold on" not in panel.history.get("1.0", "end")
+    finally:
+        root.destroy()

@@ -15,6 +15,8 @@ import threading
 import time
 import wave
 from collections.abc import Callable
+from concurrent.futures import CancelledError, Future
+from concurrent.futures import TimeoutError as FutureTimeout
 from pathlib import Path
 
 from suit_o.config import PROJECT_ROOT, SpeechConfig, is_disallowed_output_device
@@ -54,6 +56,8 @@ class CloneSpeechBackend(SpeechBackend):
         self._warming = False
         self._pending_lines: list[str] | None = None
         self._writing: set[Path] = set()
+        self._keep_model = False
+        self._rendered: Future | None = None
         self.synthesized: list[str] = []
         self.fallback_spoken: list[str] = []
 
@@ -69,6 +73,37 @@ class CloneSpeechBackend(SpeechBackend):
         """Let this instance synthesize. Used only for Voice-tab preview."""
 
         self._live = True
+
+    def keep_model_loaded(self) -> None:
+        """Leave the voice model loaded after a live line.
+
+        Chat speaks several sentences in a row, so reloading the model for each
+        one would add seconds of silence. The chat tab releases the model when it
+        goes idle or a round goes live.
+        """
+
+        self._keep_model = True
+
+    def use_rendered(self, rendered: Future | None) -> None:
+        """Play audio that was synthesized ahead of time instead of rendering now."""
+
+        self._rendered = rendered
+
+    def render_live(self, text: str) -> tuple[list[float], int]:
+        """Synthesize ``text`` with this voice and tuning, without playing it.
+
+        Reads a pre-rendered file when one matches. Used to render the next chat
+        sentence while the current one is still playing.
+        """
+
+        cleaned = text.strip()
+        if not cleaned:
+            raise ValueError("Nothing to speak")
+        tuning = self._snapshot()
+        path = self._cache_path(cleaned, tuning)
+        if path.is_file():
+            return read_wav(path)
+        return self._synthesize(cleaned, tuning)
 
     def speak(self, text: str, tuning: VoiceTuning | None = None) -> bool:
         self._urgent.set()
@@ -229,14 +264,36 @@ class CloneSpeechBackend(SpeechBackend):
         self._refuse_output_device()
         tuning = self._snapshot()
         path = self._cache_path(cleaned, tuning)
+        rendered, self._rendered = self._rendered, None
         try:
-            if path.is_file():
+            if rendered is not None:
+                audio = self._wait_rendered(rendered)
+                if audio is None:
+                    return False
+                samples, rate = audio
+            elif path.is_file():
                 samples, rate = read_wav(path)
             else:
                 samples, rate = self._synthesize(cleaned, tuning)
             return self._play(samples, rate)
         finally:
-            _release_model()
+            if not self._keep_model:
+                _release_model()
+
+    def _wait_rendered(self, rendered: Future) -> tuple[list[float], int] | None:
+        """Wait for a render started earlier. Stop cancels the wait."""
+
+        while True:
+            if self._cancel.is_set():
+                self._cancel.clear()
+                rendered.cancel()
+                return None
+            try:
+                return rendered.result(timeout=0.05)
+            except FutureTimeout:
+                continue
+            except CancelledError:
+                return None
 
     def _speak_fallback(self, text: str) -> bool:
         self.fallback_spoken.append(text)

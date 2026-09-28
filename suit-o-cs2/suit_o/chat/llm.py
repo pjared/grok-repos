@@ -20,6 +20,11 @@ from suit_o.local_config import local_config_path
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 DEFAULT_MODEL = "llama3.2"
+# Ollama keeps the model loaded this long between messages. The chat tab still
+# unloads it sooner when chat goes idle or a round goes live.
+KEEP_ALIVE = "10m"
+# A spoken reply is one or two short sentences. This caps a runaway answer.
+MAX_REPLY_TOKENS = 200
 
 OLLAMA_SETUP = (
     "Ollama isn't running. Install it from https://ollama.com, start it, "
@@ -120,6 +125,26 @@ def release_model(settings: ChatSettings, *, post: Post | None = None) -> bool:
     return True
 
 
+def warm_model(settings: ChatSettings, *, post: Post | None = None) -> bool:
+    """Ask Ollama to load the model now, so the first reply does not wait for it.
+
+    Called when push-to-talk starts, while the user is still speaking. Sends no
+    prompt and no key. A remote endpoint has nothing local to load.
+    """
+
+    if settings.backend != "ollama":
+        return False
+    sender = post or _http_lines
+    url = settings.ollama_url.rstrip("/") + "/api/generate"
+    payload = {"model": settings.model, "keep_alive": KEEP_ALIVE}
+    try:
+        for _line in sender(url, payload, {}):
+            pass
+    except OSError:
+        return False
+    return True
+
+
 def stream_reply(
     settings: ChatSettings,
     messages: list[dict],
@@ -145,7 +170,13 @@ def stream_reply(
 
 def _ollama(settings: ChatSettings, messages: list[dict], post: Post) -> Iterator[str]:
     url = settings.ollama_url.rstrip("/") + "/api/chat"
-    payload = {"model": settings.model, "messages": messages, "stream": True}
+    payload = {
+        "model": settings.model,
+        "messages": messages,
+        "stream": True,
+        "keep_alive": KEEP_ALIVE,
+        "options": {"num_predict": MAX_REPLY_TOKENS},
+    }
     try:
         lines = post(url, payload, {})
     except OSError as exc:
@@ -166,7 +197,12 @@ def _openai(settings: ChatSettings, messages: list[dict], post: Post) -> Iterato
         url = base + "/chat/completions"
     else:
         url = base + "/v1/chat/completions"
-    payload = {"model": settings.model, "messages": messages, "stream": True}
+    payload = {
+        "model": settings.model,
+        "messages": messages,
+        "stream": True,
+        "max_tokens": MAX_REPLY_TOKENS,
+    }
     headers = {"Authorization": f"Bearer {settings.openai_key}"}
     try:
         lines = post(url, payload, headers)
