@@ -18,6 +18,7 @@ from pathlib import Path
 
 from suit_o.config import DEFAULT_CONFIG_PATH
 from suit_o.local_config import local_config_path
+from suit_o.procs import hidden_window_kwargs
 
 RESTART_STATE_NAME = ".suit-o-restart.json"
 _WATCH_SKIP = frozenset({"cache", "clips", "_session", "session", "lineup-data", "__pycache__"})
@@ -322,6 +323,6 @@ def replace_process(argv: list[str]) -> None:
     """
 
     if sys.platform == "win32":
-        subprocess.Popen(argv)
+        subprocess.Popen(argv, **hidden_window_kwargs())
         raise SystemExit(0)
     os.execv(argv[0], argv)

@@ -307,8 +307,15 @@ def test_restart_keeps_spaces_in_the_windows_command(monkeypatch):
     spaced = Path("C:/Program Files/Suit-O/config.yaml")
     argv = [r"C:\Program Files\Python312\python.exe", "-m", "suit_o.gui", "--config", str(spaced)]
     launched: list[list[str]] = []
+    flags: list[dict] = []
     monkeypatch.setattr(reload_module.sys, "platform", "win32")
-    monkeypatch.setattr(reload_module.subprocess, "Popen", lambda command: launched.append(list(command)))
+    monkeypatch.setattr("suit_o.procs.sys.platform", "win32")
+
+    def popen(command, **kwargs):
+        launched.append(list(command))
+        flags.append(kwargs)
+
+    monkeypatch.setattr(reload_module.subprocess, "Popen", popen)
     try:
         replace_process(argv)
     except SystemExit as exc:
@@ -316,6 +323,7 @@ def test_restart_keeps_spaces_in_the_windows_command(monkeypatch):
     else:
         raise AssertionError("the Windows relaunch did not exit")
     assert launched == [argv]
+    assert flags == [{"creationflags": 0x08000000}]
     assert " " in launched[0][0]
     assert launched[0][-1] == str(spaced)
     assert " " in launched[0][-1]

@@ -105,7 +105,11 @@ class SuitOWindow:
         self.version_label.pack(side="left", padx=(8, 0))
         self.notice = ttk.Label(header, text="", foreground="#0b6e4f")
         self.notice.pack(side="left", padx=(12, 0))
-        ttk.Button(header, text="What's new", command=self._open_whats_new).pack(side="right")
+        self.update_button = ttk.Button(header, text="Update", command=self._update)
+        self.update_button.pack(side="right")
+        ttk.Button(header, text="What's new", command=self._open_whats_new).pack(side="right", padx=(0, 8))
+        self.update_status = ttk.Label(header, text="")
+        self.update_status.pack(side="right", padx=(0, 12))
         ttk.Label(frame, text="Local CS2 companion").grid(row=1, column=0, sticky="w", pady=(0, 8))
 
         self.notebook = ttk.Notebook(frame)
@@ -283,10 +287,6 @@ class SuitOWindow:
         ttk.Button(buttons, text="Refresh devices", command=self._reload_devices).grid(
             row=0, column=1, sticky="w", padx=(8, 0)
         )
-        self.update_button = ttk.Button(buttons, text="Update", command=self._update)
-        self.update_button.grid(row=0, column=2, sticky="w", padx=(8, 0))
-        self.update_status = ttk.Label(buttons, text="")
-        self.update_status.grid(row=0, column=3, sticky="w", padx=(8, 0))
         self.menu_greeting = tk.BooleanVar(value=self.app.config.menu_greeting)
         ttk.Checkbutton(
             buttons,
