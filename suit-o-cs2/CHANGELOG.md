@@ -10,6 +10,8 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-09-27
+
 ### Changed
 
 - Chat with a cloned voice keeps the voice model loaded between sentences and renders the next sentence while the current one plays, so there is no reload pause after each sentence. The model is released when chat goes idle or a round goes live. (`36d00ec`)
