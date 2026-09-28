@@ -10,6 +10,13 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+### Changed
+
+- Chat with a cloned voice keeps the voice model loaded between sentences and renders the next sentence while the current one plays, so there is no reload pause after each sentence. The model is released when chat goes idle or a round goes live. (`36d00ec`)
+- Push-to-talk sends what it heard when you let go. Pressing the key starts loading the speech and chat models while you talk, and transcription no longer blocks the window. If Suit-O is still answering, the text waits in the box. (`36d00ec`)
+- Chat keeps the Ollama model loaded between messages, caps how long a reply can run, and sends only the last 16 messages, so a long chat does not keep getting slower. (`36d00ec`)
+- The chat persona adds the suit assistant's quick mood swings, guilt trips for a nice review, and jokes about the developers and menus, in original wording. (`36d00ec`)
+
 ## [0.21.0] - 2026-09-27
 
 ### Changed
