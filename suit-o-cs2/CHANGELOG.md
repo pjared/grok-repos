@@ -10,6 +10,11 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+### Added
+
+- A Build voice button on the Clips page, so a voice made from uploaded clips can be built there. (`7e55076`)
+- After a voice is built, Suit-O asks whether to use it now. Yes switches in-game lines and chat to the new voice. (`7e55076`)
+
 ## [0.25.2] - 2026-09-28
 
 ### Fixed
