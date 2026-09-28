@@ -12,7 +12,7 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ### Fixed
 
-- Push-to-talk warm-up checks whether a round is live before it loads the speech or chat model, and unloads if the round goes live while that load is still running, so the models do not stay in memory for the round.
+- Push-to-talk warm-up checks whether a round is live before it loads the speech or chat model, and unloads if the round goes live while that load is still running, so the models do not stay in memory for the round. (`de53870`)
 
 ## [0.22.0] - 2026-09-27
 
