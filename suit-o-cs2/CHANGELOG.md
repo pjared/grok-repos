@@ -10,6 +10,8 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-09-28
+
 ### Added
 
 - An Installations button at the top of the window, shown only while something optional is missing. It opens a checklist: chat brain (Ollama and llama3.2), push-to-talk, voice training, and recording clean-up. Ticked parts install in the background with progress in the window, and their models download during the install. (`d748fa5`)
