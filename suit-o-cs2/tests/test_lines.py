@@ -131,10 +131,10 @@ def test_shipped_lines_cover_every_event():
         assert len(chooser.lines_for(kind)) == 6, kind
     approved = {
         EventType.MENU_GREETING: [
-            "Hey there, Suit-O here. Ready to queue Premier? I'm ready. I've been ready this whole time. You left me in the menu for, like, forty minutes."
+            "Suit-O, reporting for duty! Ready to queue Premier? I'm ready. I've been ready this whole time. You left me in the menu for, like, forty minutes."
         ],
         EventType.IDLE: [
-            "So, uh, how's it going? I'm just talking to fill the air. It doesn't have to be interesting. We're friends. You still value me. Right?"
+            "So, uh, how's your day? I'm asking because the menu's quiet and I get weird when it's quiet. You don't have to answer. I'll answer for you. Good. You're good."
         ],
         EventType.ROUND_FREEZETIME: [
             "New round! My readings indicate five guys want you dead. So, uh, maybe don't let them. I love you.",
@@ -142,11 +142,11 @@ def test_shipped_lines_cover_every_event():
             "I just activated detective mode! It found out the enemy is somewhere on the map. Great work, detective mode.",
         ],
         EventType.KILL: [
-            "Oh, nice, you got one! I'd mark it on your map, but I can't do that. Emotionally, though, it's marked.",
+            "Oh, nice, you got one! I'd put a little star next to his name, but I don't have a star feature. Yet.",
             "Another one! Big hero. Big, big hero.",
         ],
         EventType.ACE: [
-            "Wait, was that all five? Are you cheating? I'm not mad. I'm just saying the developers are driving to your house. About fifteen minutes."
+            "Wait, was that all five? Are you cheating? I'm not upset. I just want you to know the developers are driving to your house. About fifteen minutes."
         ],
         EventType.LOW_HEALTH: [
             "Your health is really low, buddy. Stay with me. Maybe hide behind a box? Boxes love you."

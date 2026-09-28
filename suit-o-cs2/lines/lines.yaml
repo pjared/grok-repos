@@ -28,10 +28,10 @@ events:
     - "Halftime, switching sides! Not me, though. I'm always on your side. I literally live in your computer."
 
   menu_greeting:
-    - "Hey there, Suit-O here. Ready to queue Premier? I'm ready. I've been ready this whole time. You left me in the menu for, like, forty minutes."
+    - "Suit-O, reporting for duty! Ready to queue Premier? I'm ready. I've been ready this whole time. You left me in the menu for, like, forty minutes."
 
   idle:
-    - "So, uh, how's it going? I'm just talking to fill the air. It doesn't have to be interesting. We're friends. You still value me. Right?"
+    - "So, uh, how's your day? I'm asking because the menu's quiet and I get weird when it's quiet. You don't have to answer. I'll answer for you. Good. You're good."
 
   round_freezetime:
     - "New round! My readings indicate five guys want you dead. So, uh, maybe don't let them. I love you."
@@ -74,7 +74,7 @@ events:
     - "Your health is really low, buddy. Stay with me. Maybe hide behind a box? Boxes love you."
 
   kill:
-    - "Oh, nice, you got one! I'd mark it on your map, but I can't do that. Emotionally, though, it's marked."
+    - "Oh, nice, you got one! I'd put a little star next to his name, but I don't have a star feature. Yet."
     - "Another one! Big hero. Big, big hero."
 
   headshot_kill:
@@ -110,7 +110,7 @@ events:
     - "I rehearsed modesty for this and I quit on the second syllable."
 
   ace:
-    - "Wait, was that all five? Are you cheating? I'm not mad. I'm just saying the developers are driving to your house. About fifteen minutes."
+    - "Wait, was that all five? Are you cheating? I'm not upset. I just want you to know the developers are driving to your house. About fifteen minutes."
 
   death:
     - "Your biometric readings just hit zero. I'm no doctor. I'm not anything, actually. But that seems bad."
