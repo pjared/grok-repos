@@ -145,6 +145,8 @@ def test_ffmpeg_resolver_prefers_path_and_explains_a_missing_binary(monkeypatch)
     except FfmpegError as exc:
         assert "imageio-ffmpeg" in str(exc)
         assert "PATH" in str(exc)
+        assert "Update" in str(exc)
+        assert "requirements.txt" in str(exc)
         assert exc.args[0] == FFMPEG_INSTALL
     else:
         raise AssertionError("missing ffmpeg was accepted")
@@ -255,3 +257,12 @@ def _write_stereo(path: Path, samples: list[int], rate: int) -> None:
         handle.setsampwidth(2)
         handle.setframerate(rate)
         handle.writeframes(payload.tobytes())
+
+
+def test_ffmpeg_ships_with_the_base_install():
+    from suit_o.config import PROJECT_ROOT
+
+    base = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")
+    voice = (PROJECT_ROOT / "requirements-voice.txt").read_text(encoding="utf-8")
+    assert any(line.startswith("imageio-ffmpeg") for line in base.splitlines())
+    assert not any(line.startswith("imageio-ffmpeg") for line in voice.splitlines())

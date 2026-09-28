@@ -15,7 +15,8 @@ from suit_o.procs import hidden_window_kwargs
 
 FFMPEG_INSTALL = (
     "Suit-O needs ffmpeg to open that recording. "
-    "From the suit-o-cs2 folder run: python -m pip install -r requirements-voice.txt "
+    "Click Update in Suit-O, or from the suit-o-cs2 folder run: "
+    "python -m pip install -r requirements.txt "
     "(that installs the imageio-ffmpeg wheel, which bundles ffmpeg on Windows). "
     "Or install ffmpeg yourself and put it on PATH."
 )

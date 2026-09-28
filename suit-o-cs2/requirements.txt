@@ -3,3 +3,7 @@ pyttsx3>=2.90
 pillow>=10.4.0
 # File drops on Voice Training. Bundles tkdnd. The Add files button works without it.
 tkinterdnd2>=0.4.2
+# Bundles an ffmpeg binary, including on Windows, so Voice Training and Clips can read
+# mp3, m4a, mp4, and mkv without a separate ffmpeg install. BSD-2.
+# https://github.com/imageio/imageio-ffmpeg
+imageio-ffmpeg>=0.5.1
