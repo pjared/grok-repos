@@ -10,6 +10,15 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+### Added
+
+- An Installations button at the top of the window, shown only while something optional is missing. It opens a checklist: chat brain (Ollama and llama3.2), push-to-talk, voice training, and recording clean-up. Ticked parts install in the background with progress in the window, and their models download during the install. (`d748fa5`)
+- `Install Suit-O.bat` sets Suit-O up on Python 3.11, which voice training needs. It installs Python 3.11 when it is missing, rebuilds the venv, keeps the optional parts this PC had, and reopens Suit-O. Installations runs it from Move to Python 3.11. Settings and voices are not touched. (`d748fa5`)
+
+### Changed
+
+- Messages about a missing optional part point to Installations. (`d748fa5`)
+
 ## [0.24.0] - 2026-09-28
 
 ### Changed
