@@ -11,6 +11,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from suit_o.procs import hidden_window_kwargs
+
 FFMPEG_INSTALL = (
     "Suit-O needs ffmpeg to open that recording. "
     "From the suit-o-cs2 folder run: python -m pip install -r requirements-voice.txt "
@@ -58,6 +60,7 @@ def probe_duration(source: Path) -> float:
             [exe, "-hide_banner", "-i", str(source)],
             capture_output=True,
             check=False,
+            **hidden_window_kwargs(),
         )
     except OSError as exc:
         raise FfmpegError(FFMPEG_INSTALL) from exc
@@ -91,7 +94,7 @@ def extract_audio(source: Path, dest: Path, *, sample_rate: int) -> None:
         str(dest),
     ]
     try:
-        completed = subprocess.run(command, capture_output=True, check=False)
+        completed = subprocess.run(command, capture_output=True, check=False, **hidden_window_kwargs())
     except OSError as exc:
         raise FfmpegError(FFMPEG_INSTALL) from exc
     if completed.returncode != 0 or not dest.is_file():

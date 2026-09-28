@@ -12,6 +12,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from suit_o.procs import hidden_window_kwargs
+
 REQUIREMENT_NAMES = (
     "requirements.txt",
     "requirements-voice.txt",
@@ -361,6 +363,7 @@ def subprocess_runner(args: list[str], cwd: Path) -> CommandResult:
         text=True,
         timeout=180,
         check=False,
+        **hidden_window_kwargs(),
     )
     return CommandResult(completed.returncode, completed.stdout or "", completed.stderr or "")
 
