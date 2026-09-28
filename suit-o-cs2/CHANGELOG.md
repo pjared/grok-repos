@@ -10,6 +10,10 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+### Changed
+
+- Four stock lines, for the menu greeting, idle chat, a kill, and an ace, are reworded so they do not match the game's dialogue. (`e9a613c`)
+
 ## [0.20.0] - 2026-09-27
 
 ### Added
@@ -18,7 +22,6 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ### Changed
 
-- Four stock lines, for the menu greeting, idle chat, a kill, and an ace, are reworded so they do not match the game's dialogue.
 - Stock lines for the menu, idle chat, round start, a kill, an ace, low health, death, a bomb plant, and the end of a round or match. The last-alive line shares the enemy bomb plant, because own-player data has no alive teammate count. (`b77296e`)
 
 ## [0.19.17] - 2026-09-27
