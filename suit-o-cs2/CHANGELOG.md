@@ -10,6 +10,8 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-09-28
+
 ### Changed
 
 - The Update button sits at the top of the window, to the right of What's new. (`e5a9c1b`)
