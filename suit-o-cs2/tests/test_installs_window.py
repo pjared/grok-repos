@@ -116,3 +116,37 @@ def test_a_failed_install_shows_the_error_and_keeps_the_window_open():
         assert panel.window.winfo_exists()
     finally:
         root.destroy()
+
+
+def test_header_button_shows_from_the_start_and_hides_once_everything_is_installed(tmp_path):
+    import shutil
+
+    from suit_o.app import SuitOApp
+    from suit_o.config import DEFAULT_CONFIG_PATH, load_config
+    from suit_o.speech.stub import StubSpeechBackend
+
+    try:
+        from suit_o.gui.window import SuitOWindow
+    except Exception:
+        import pytest
+
+        pytest.skip("window needs Tk")
+    probe = open_tk_or_skip()
+    probe.destroy()
+    config = tmp_path / "config.yaml"
+    shutil.copy(DEFAULT_CONFIG_PATH, config)
+    shutil.copytree(DEFAULT_CONFIG_PATH.parent / "lines", tmp_path / "lines")
+    app = SuitOApp(load_config(config), backend=StubSpeechBackend(), config_path=config)
+    window = SuitOWindow(app)
+    try:
+        assert window.installs_button.winfo_manager() == "pack"
+        window._show_installs_button(False)
+        assert window.installs_button.winfo_manager() == ""
+        window._show_installs_button(True)
+        assert window.installs_button.winfo_manager() == "pack"
+        order = [child for child in window.installs_button.master.pack_slaves()]
+        right = order.index(window.update_button), order.index(window.installs_button)
+        assert right[0] < right[1]
+    finally:
+        window.root.destroy()
+        app.stop()

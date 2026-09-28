@@ -116,9 +116,11 @@ class SuitOWindow:
         self.update_button = ttk.Button(header, text="Update", command=self._update)
         self.update_button.pack(side="right")
         ttk.Button(header, text="What's new", command=self._open_whats_new).pack(side="right", padx=(0, 8))
-        # Shown only while something optional is missing. It hides itself once
-        # everything is installed.
+        # Shown from the start. A background check hides it once every optional
+        # part is installed. Packing it here, before the first draw, keeps it
+        # visible on Windows without waiting for a repaint.
         self.installs_button = ttk.Button(header, text="Installations", command=self._open_installs)
+        self.installs_button.pack(side="right", padx=(0, 8))
         self._installs_window = None
         self.update_status = ttk.Label(header, text="")
         self.update_status.pack(side="right", padx=(0, 12))
@@ -703,7 +705,7 @@ class SuitOWindow:
                 missing = Probes().missing()
             except Exception:
                 logger.debug("Could not check optional installs", exc_info=True)
-                missing = []
+                missing = ["unknown"]
             self._ui.call(lambda: self._show_installs_button(bool(missing)))
 
         threading.Thread(target=work, name="suit-o-install-check", daemon=True).start()
@@ -713,10 +715,11 @@ class SuitOWindow:
             return
         try:
             if needed:
-                if not self.installs_button.winfo_ismapped():
+                if not self.installs_button.winfo_manager():
                     self.installs_button.pack(side="right", padx=(0, 8), before=self.update_status)
             else:
                 self.installs_button.pack_forget()
+            self.root.update_idletasks()
         except tk.TclError:
             return
 
