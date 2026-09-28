@@ -32,6 +32,11 @@ class IdleRelease:
         self._touched = now
         self._resident = True
 
+    def clear_resident(self) -> None:
+        """The models are not in memory. A warm-up that lost the race must not leave them loaded unmarked."""
+
+        self._resident = False
+
     def poll(self, now: float, *, busy: bool, paused: bool) -> bool:
         if not self._resident:
             return False

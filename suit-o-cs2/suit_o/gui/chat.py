@@ -336,19 +336,46 @@ class ChatPanel:
         self.send()
 
     def _warm_up(self) -> None:
-        """Load the speech and chat models while the user is still talking."""
+        """Load the speech and chat models while the user is still talking.
+
+        A round can go live while this thread is still loading. That unload
+        clears the resident flag, so a load that finishes afterwards would
+        sit in memory for the rest of the round. Check before each load, and
+        once more at the end, and drop anything this thread brought back.
+        """
 
         if self._generate_override is not None or not self._threaded:
             return
 
+        def live() -> bool:
+            try:
+                return bool(self.app.match_is_live())
+            except Exception:
+                return False
+
+        def undo() -> None:
+            self._idle.clear_resident()
+            self._release_resident()
+
         def run() -> None:
+            if live():
+                undo()
+                return
             preload_stt()
+            if live():
+                undo()
+                return
             try:
                 warm_model(load_chat_settings(getattr(self.app, "config_path", None)))
             except Exception:
+                if live():
+                    undo()
                 return
+            if live():
+                undo()
 
-        threading.Thread(target=run, name="suit-o-chat-warm", daemon=True).start()
+        self._warm_thread = threading.Thread(target=run, name="suit-o-chat-warm", daemon=True)
+        self._warm_thread.start()
 
     def _generate(self, messages: list[dict]) -> Iterator[str]:
         if self._generate_override is not None:

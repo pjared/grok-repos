@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 
 from tkinter import ttk
@@ -304,6 +305,71 @@ def test_chat_allows_menu_warmup_and_the_gap_between_matches():
     assert chat_is_paused("playing", "freezetime", "live") is False
     assert chat_is_paused("playing", None, None) is False
     assert chat_is_paused(None, None, None) is False
+
+
+def test_a_live_round_during_push_to_talk_warm_up_unloads_and_clears_resident(monkeypatch):
+    """Going live while Whisper or the chat model is still loading must not leave them resident."""
+
+    log: list[str] = []
+    entered = threading.Event()
+    release_load = threading.Event()
+
+    def preload_stt() -> bool:
+        entered.set()
+        assert release_load.wait(2)
+        log.append("load-stt")
+        return True
+
+    def warm_model(_settings, post=None) -> bool:
+        log.append("load-chat")
+        return True
+
+    monkeypatch.setattr("suit_o.gui.chat.preload_stt", preload_stt)
+    monkeypatch.setattr("suit_o.gui.chat.warm_model", warm_model)
+    monkeypatch.setattr("suit_o.gui.chat.release_stt", lambda: log.append("release-stt"))
+
+    class _App:
+        config_path = None
+
+        def __init__(self) -> None:
+            self.live = False
+
+        def match_is_live(self) -> bool:
+            return self.live
+
+        def speak_chat(self, _text: str) -> None:
+            return None
+
+        def interrupt_chat(self) -> None:
+            return None
+
+    root = open_tk_or_skip()
+    try:
+        app = _App()
+        panel = ChatPanel(
+            ttk.Frame(root),
+            app,
+            schedule=lambda callback: callback(),
+            threaded=True,
+            on_release=lambda: log.append("unload"),
+        )
+        panel._idle.touch(0)
+        assert panel._idle.resident is True
+        panel._warm_up()
+        assert entered.wait(2)
+        app.live = True
+        assert panel.poll_idle(now=0) is True
+        assert panel._idle.resident is False
+        release_load.set()
+        assert panel._warm_thread.join(2) is None
+        assert panel._warm_thread.is_alive() is False
+        assert panel._idle.resident is False
+        assert "load-chat" not in log
+        assert log.index("load-stt") < len(log) - 1
+        assert log[-1] == "unload"
+    finally:
+        release_load.set()
+        root.destroy()
 
 
 def test_idle_releases_a_resident_model_and_a_live_round_releases_it_now():
