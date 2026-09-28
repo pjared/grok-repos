@@ -27,7 +27,7 @@ from suit_o.chat.llm import (
 )
 from suit_o.chat.persona import load_persona
 from suit_o.chat.session import PAUSED, ChatSession
-from suit_o.chat.stt import WHISPER_INSTALL, SttError, transcribe, whisper_available
+from suit_o.chat.stt import WHISPER_INSTALL, SttError, transcribe
 from suit_o.config import DEFAULT_CONFIG_PATH, load_config
 from suit_o.gui.chat import VRAM_NOTE, ChatPanel
 from suit_o.local_config import local_config_path, store_personal_settings
@@ -212,7 +212,7 @@ def test_missing_whisper_explains_install_and_a_fake_transcriber_is_used(monkeyp
     assert transcribe([0.1], 16000, transcriber=lambda _samples, _rate: "hello there") == "hello there"
 
 
-def test_chat_panel_streams_text_and_pauses(tmp_path: Path):
+def test_chat_panel_streams_text_and_pauses(tmp_path: Path, monkeypatch):
     spoken: list[str] = []
 
     class _App:
@@ -239,6 +239,7 @@ def test_chat_panel_streams_text_and_pauses(tmp_path: Path):
     root = open_tk_or_skip()
     try:
         app = _App()
+        monkeypatch.setattr("suit_o.gui.chat.whisper_available", lambda: False)
         panel = ChatPanel(
             ttk.Frame(root),
             app,
@@ -246,7 +247,10 @@ def test_chat_panel_streams_text_and_pauses(tmp_path: Path):
             threaded=False,
             generate=generate,
         )
-        assert "disabled" in panel.talk_button.state() or not whisper_available()
+        assert "disabled" in panel.talk_button.state()
+        monkeypatch.setattr("suit_o.gui.chat.whisper_available", lambda: True)
+        panel._paint_talk()
+        assert "disabled" not in panel.talk_button.state()
         panel.entry.insert(0, "hello")
         panel.send()
         shown = panel.history.get("1.0", "end")
