@@ -10,6 +10,8 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+## [0.25.1] - 2026-09-28
+
 ### Fixed
 
 - The Installations button shows as soon as Suit-O opens, instead of only after you click a tab. (`244ca8e`)
