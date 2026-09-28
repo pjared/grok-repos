@@ -182,6 +182,11 @@ class ClipsPanel:
         self.script_line = ttk.Combobox(save, width=42, state="readonly")
         self.script_line.grid(row=0, column=3, sticky="ew", padx=(6, 0))
         self.script_line.bind("<<ComboboxSelected>>", lambda _event: self._apply_script_line())
+        # A read-only combobox on Windows changes its choice when the mouse wheel
+        # passes over it. That silently rewrote the transcript, so the wheel does
+        # nothing here. Pick a line with a click.
+        for wheel in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            self.script_line.bind(wheel, lambda _event: "break")
         ttk.Label(save, text="Transcript").grid(row=1, column=0, sticky="nw", pady=(4, 0))
         self.transcript = tk.Text(save, height=2, wrap="word")
         self.transcript.grid(row=1, column=1, columnspan=2, sticky="ew", pady=(4, 0))
@@ -257,6 +262,7 @@ class ClipsPanel:
         self._regions = []
         self._source = path.name
         self.source_label.configure(text=path.name)
+        self._clear_clip_fields()
         self._rebuild_peaks()
         self._paint_regions()
         self._draw()
@@ -536,6 +542,8 @@ class ClipsPanel:
                 self._regions = []
         self._paint_regions()
         self.reload_library()
+        if saved:
+            self._clear_clip_fields()
         self.status.configure(text=f"Saved {saved} clip(s) into the {self.voice.get().strip() or 'Suit-O'} library.")
 
     def save_selection(self) -> None:
@@ -556,6 +564,7 @@ class ClipsPanel:
             messagebox.showerror("Suit-O", str(exc))
             return
         self.reload_library()
+        self._clear_clip_fields()
         self.status.configure(text=f"Saved {record.label or record.id} ({record.duration_seconds:.1f}s).")
 
     def reload_library(self) -> None:
@@ -653,13 +662,20 @@ class ClipsPanel:
         return self.transcript.get("1.0", "end").strip()
 
     def _apply_script_line(self) -> None:
+        """Put the chosen script line in Transcript. Label is left for the user."""
+
         line = self.script_line.get().strip()
         if not line or line == "(none)":
             return
         self.transcript.delete("1.0", "end")
         self.transcript.insert("1.0", line)
-        if not self.label.get().strip():
-            self.label.set(line[:48])
+
+    def _clear_clip_fields(self) -> None:
+        """Empty Label, Transcript, and Script line so the next clip starts blank."""
+
+        self.label.set("")
+        self.transcript.delete("1.0", "end")
+        self.script_line.set("(none)")
 
     def _load_script_lines(self) -> None:
         try:

@@ -266,3 +266,72 @@ def test_ffmpeg_ships_with_the_base_install():
     voice = (PROJECT_ROOT / "requirements-voice.txt").read_text(encoding="utf-8")
     assert any(line.startswith("imageio-ffmpeg") for line in base.splitlines())
     assert not any(line.startswith("imageio-ffmpeg") for line in voice.splitlines())
+
+
+def test_script_line_fills_only_the_transcript_and_saving_clears_the_fields():
+    import tkinter as tk
+    from tkinter import ttk
+
+    from tkutil import open_tk_or_skip
+
+    from suit_o.gui.clips import ClipsPanel
+
+    root = open_tk_or_skip()
+    try:
+        panel = object.__new__(ClipsPanel)
+        panel.label = tk.StringVar(master=root)
+        panel.transcript = tk.Text(root)
+        panel.script_line = ttk.Combobox(root, state="readonly", values=("(none)", "Oh. Hello."))
+        panel.script_line.set("(none)")
+        panel.samples = [0.0, 0.1, 0.2, 0.1]
+        panel.rate = 4
+        panel.in_point = 0.0
+        panel.out_point = 1.0
+        saved: list[tuple[str, str]] = []
+
+        class _Record:
+            label = "mine"
+            id = "c1"
+            duration_seconds = 1.0
+
+        class _Library:
+            def add_clip(self, samples, rate, start, end, *, label, transcript, included):
+                saved.append((label, transcript))
+                return _Record()
+
+        class _Status:
+            text = ""
+
+            def configure(self, *, text: str) -> None:
+                self.text = text
+
+        panel._library = lambda: _Library()
+        panel.reload_library = lambda: None
+        panel.status = _Status()
+
+        panel.script_line.set("Oh. Hello.")
+        panel._apply_script_line()
+        assert panel._transcript() == "Oh. Hello."
+        assert panel.label.get() == ""
+
+        panel.transcript.delete("1.0", "end")
+        panel.transcript.insert("1.0", "what I actually said")
+        panel.label.set("mine")
+        panel.save_selection()
+        assert saved == [("mine", "what I actually said")]
+        assert panel.label.get() == ""
+        assert panel._transcript() == ""
+        assert panel.script_line.get() == "(none)"
+
+        panel.save_selection()
+        assert saved[-1] == ("Clip", "")
+    finally:
+        root.destroy()
+
+
+def test_the_mouse_wheel_cannot_change_the_script_line():
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parent.parent / "suit_o" / "gui" / "clips.py").read_text(encoding="utf-8")
+    assert 'self.script_line.bind(wheel, lambda _event: "break")' in source
+    assert "self.label.set(line" not in source
