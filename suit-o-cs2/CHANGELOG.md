@@ -10,6 +10,8 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+## [0.25.2] - 2026-09-28
+
 ### Fixed
 
 - Clips no longer fills Label and Transcript with a Suit-O script line. Scrolling over Script line does not change it, choosing a line fills only Transcript, and the fields clear after each save and when you open a new recording. (`f191b0c`)
