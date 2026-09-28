@@ -16,6 +16,11 @@ from pathlib import Path
 
 import yaml
 
+from suit_o.lines.chattiness import (
+    EXEMPT_EVENTS,
+    normalize_chattiness,
+    rule_for,
+)
 from suit_o.models import VISIBLE_CONTEXT_KEYS, EventType, GameEvent
 
 _DEFAULT_CONTEXT = {
@@ -31,8 +36,8 @@ _DEFAULT_CONTEXT = {
 class LineDecision:
     """A line to speak, or the reason Suit-O stayed quiet.
 
-    ``status`` is ``spoken``, ``muted``, ``cooldown``, ``lower priority``,
-    or ``no matching line``.
+    ``status`` is ``spoken``, ``muted``, ``chattiness``, ``cooldown``,
+    ``lower priority``, or ``no matching line``.
     """
 
     text: str | None
@@ -70,7 +75,9 @@ class YamlLineProvider(LineProvider):
         preempt_min_priority: int = 70,
         muted: bool = False,
         rng: random.Random | None = None,
+        chattiness: str = "chatty",
     ) -> None:
+        self.chattiness = normalize_chattiness(chattiness)
         self._lines: dict[str, list[str]] = {
             str(key): [str(line) for line in value] for key, value in lines.items()
         }
@@ -96,6 +103,7 @@ class YamlLineProvider(LineProvider):
         preempt_min_priority: int,
         muted: bool = False,
         rng: random.Random | None = None,
+        chattiness: str = "chatty",
     ) -> YamlLineProvider:
         loaded = load_lines(path)
         return cls(
@@ -106,6 +114,7 @@ class YamlLineProvider(LineProvider):
             preempt_min_priority=preempt_min_priority,
             muted=muted,
             rng=rng,
+            chattiness=chattiness,
         )
 
     def lines_for(self, event_type: EventType) -> list[str]:
@@ -114,6 +123,13 @@ class YamlLineProvider(LineProvider):
     def set_muted(self, muted: bool) -> None:
         with self._lock:
             self.muted = muted
+
+    def set_chattiness(self, level: str) -> None:
+        """Quiet, normal, or chatty. Applies to the next event."""
+
+        cleaned = normalize_chattiness(level)
+        with self._lock:
+            self.chattiness = cleaned
 
     def carry_clocks(self, previous: YamlLineProvider) -> None:
         """Keep per-line cooldowns, the global gap, and the last line spoken.
@@ -145,12 +161,16 @@ class YamlLineProvider(LineProvider):
         pool = self._lines.get(key) or []
         if not pool:
             return LineDecision(None, "no matching line")
+        rule = rule_for(self.chattiness)
+        if key not in EXEMPT_EVENTS and key not in rule.also and event.priority < rule.min_priority:
+            return LineDecision(None, "chattiness")
         last_at = self._last_at.get(key)
-        cooldown = self._cooldowns.get(key, self._default_cooldown)
+        cooldown = self._cooldowns.get(key, self._default_cooldown) * rule.cooldown_scale
         if last_at is not None and now - last_at < cooldown:
             return LineDecision(None, "cooldown")
         if event.priority < self._preempt_min_priority:
-            if self._last_global is not None and now - self._last_global < self._min_interval:
+            gap = self._min_interval * rule.interval_scale
+            if self._last_global is not None and now - self._last_global < gap:
                 return LineDecision(None, "lower priority")
         choice = self._pick(key, pool)
         self._last_at[key] = now

@@ -131,7 +131,29 @@ class VoicePanel:
         )
         self.emphasis.grid(row=6, column=1, sticky="w", padx=(8, 0), pady=(8, 0))
 
-        ttk.Label(parent, text="Preview").grid(row=7, column=0, columnspan=3, sticky="w", pady=(12, 4))
+        from suit_o.lines.chattiness import HINTS, LABELS, LEVELS
+
+        ttk.Label(parent, text="Chattiness").grid(row=7, column=0, sticky="w", pady=(8, 0))
+        chat_row = ttk.Frame(parent)
+        chat_row.grid(row=7, column=1, columnspan=2, sticky="ew", padx=(8, 0), pady=(8, 0))
+        chat_row.columnconfigure(1, weight=1)
+        self.chattiness = ttk.Combobox(
+            chat_row,
+            state="readonly",
+            width=16,
+            values=tuple(LABELS[level] for level in LEVELS),
+        )
+        self.chattiness.grid(row=0, column=0, sticky="w")
+        self.chattiness.bind("<<ComboboxSelected>>", lambda _event: self._save_chattiness())
+        for wheel in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            self.chattiness.bind(wheel, lambda _event: "break")
+        self.chattiness_hint = ttk.Label(chat_row, foreground="#555555")
+        self.chattiness_hint.grid(row=0, column=1, sticky="w", padx=(10, 0))
+        self._chattiness_hints = HINTS
+        self._chattiness_labels = LABELS
+        self._paint_chattiness(app.config.chattiness)
+
+        ttk.Label(parent, text="Preview").grid(row=8, column=0, columnspan=3, sticky="w", pady=(12, 4))
         self.preview_text = tk.Text(
             parent,
             height=4,
@@ -141,11 +163,11 @@ class VoicePanel:
             bg="#ffffff",
             fg="#1a1a1a",
         )
-        self.preview_text.grid(row=8, column=0, columnspan=3, sticky="ew")
+        self.preview_text.grid(row=9, column=0, columnspan=3, sticky="ew")
         self.preview_text.insert("1.0", DEFAULT_PREVIEW_LINE)
 
         buttons = ttk.Frame(parent)
-        buttons.grid(row=9, column=0, columnspan=3, sticky="w", pady=(10, 0))
+        buttons.grid(row=10, column=0, columnspan=3, sticky="w", pady=(10, 0))
         self.preview_button = ttk.Button(buttons, text="Preview", command=self.preview)
         self.preview_button.grid(row=0, column=0, sticky="w")
         self.save_button = ttk.Button(buttons, text="Save", command=self.save)
@@ -220,6 +242,21 @@ class VoicePanel:
             messagebox.showerror("Suit-O", str(exc))
             return
         self.show(applied)
+
+    def _paint_chattiness(self, level: str) -> None:
+        self.chattiness.set(self._chattiness_labels.get(level, "Normal"))
+        self.chattiness_hint.configure(text=self._chattiness_hints.get(level, ""))
+
+    def _save_chattiness(self) -> None:
+        """Chattiness saves as soon as it changes. It is not part of Save."""
+
+        try:
+            level = self.app.save_chattiness(self.chattiness.get())
+        except Exception as exc:
+            messagebox.showerror("Suit-O", str(exc))
+            self._paint_chattiness(self.app.config.chattiness)
+            return
+        self._paint_chattiness(level)
 
     def reset(self) -> None:
         try:

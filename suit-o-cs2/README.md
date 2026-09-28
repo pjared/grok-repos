@@ -185,6 +185,16 @@ python -m pytest
 
 ## How lines are chosen
 
+**Chattiness** on the Voice tab sets how much Suit-O talks. It saves as soon as you pick it, and it applies to the next event and the next chat reply.
+
+| Level | In a match | Chat replies |
+| --- | --- | --- |
+| Quiet | Only big moments: bomb plants, deaths, multi-kills, aces, the bomb result, and the match result | One short sentence |
+| Normal (default) | Skips round-start, warmup, and idle chatter, and leaves 1.5x more room between small lines | One or two short sentences |
+| Chatty | Every event, as before | Up to three short sentences |
+
+The menu greeting has its own switch on the Listener tab, so Chattiness leaves it alone. A line held back by Chattiness shows in the activity log as `skipped (chattiness)`. The simulator ignores the setting and plays every event.
+
 Each event has its own list in `lines/lines.yaml`. Suit-O picks at random and will not repeat the same line twice in a row when it has another choice.
 
 Per-event cooldowns and a global gap (`rate_limit.min_interval_seconds`) keep it from talking over every bullet. Aces, multi-kills, the bomb, and your death sit at priority 70 or above (`preempt_min_priority`). Those can speak during the gap and can interrupt a smaller line that is already playing.

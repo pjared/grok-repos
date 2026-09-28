@@ -31,6 +31,8 @@ def simulation_config(path: Path) -> Config:
     config.default_cooldown = 0
     config.cooldowns = {event.value: 0.0 for event in EventType}
     config.min_interval = 0
+    # The simulator plays every event, so it ignores the Chattiness setting.
+    config.chattiness = "chatty"
     config.server.port = 0
     return config
 

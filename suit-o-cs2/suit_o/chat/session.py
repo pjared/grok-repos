@@ -28,6 +28,9 @@ class ChatSession:
 
     persona_path: Path = PERSONA_PATH
     turns: list[ChatTurn] = field(default_factory=list)
+    # Returns quiet, normal, or chatty. Read on every reply, so a change on the
+    # Voice tab applies to the next message.
+    chattiness: Callable[[], str] = field(default=lambda: "normal")
     _cancel: bool = False
     _epoch: int = 0
 
@@ -101,7 +104,15 @@ class ChatSession:
             raise
 
     def _messages(self) -> list[dict]:
-        messages = [{"role": "system", "content": load_persona(self.persona_path)}]
+        from suit_o.lines.chattiness import ChattinessError, rule_for
+
+        persona = load_persona(self.persona_path)
+        try:
+            rule = rule_for(self.chattiness())
+        except ChattinessError:
+            rule = rule_for("normal")
+        persona = f"{persona}\n\nReply length, which overrides anything above: {rule.reply_rule}"
+        messages = [{"role": "system", "content": persona}]
         recent = self.turns[-MAX_CONTEXT_TURNS:]
         messages.extend({"role": turn.role, "content": turn.text} for turn in recent)
         return messages

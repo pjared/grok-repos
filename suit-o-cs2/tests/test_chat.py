@@ -57,7 +57,8 @@ def test_persona_reloads_and_replies_are_spoken_per_sentence(tmp_path: Path):
         )
     )
     assert spoken == ["Hi.", "Sorry!"]
-    assert seen[0][0]["content"] == "Be brief and original."
+    assert seen[0][0]["content"].startswith("Be brief and original.")
+    assert "one or two short sentences" in seen[0][0]["content"]
     assert seen[0][-1] == {"role": "user", "content": "hello"}
     assert "".join(piece for kind, piece in events if kind == "token") == "Hi. Sorry!"
     persona.write_text("Even briefer.", encoding="utf-8")
@@ -70,7 +71,7 @@ def test_persona_reloads_and_replies_are_spoken_per_sentence(tmp_path: Path):
         yield "Ok."
 
     list(session.reply("next", paused=lambda: False, generate=again, speak=spoken.append))
-    assert seen[-1][0]["content"] == "Even briefer."
+    assert seen[-1][0]["content"].startswith("Even briefer.")
     assert all(turn["content"] != "hello" for turn in seen[-1])
 
 

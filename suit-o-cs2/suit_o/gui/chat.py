@@ -55,7 +55,7 @@ class ChatPanel:
         self._threaded = threaded
         self._generate_override = generate
         self._on_release = on_release
-        self.session = ChatSession()
+        self.session = ChatSession(chattiness=self._chattiness)
         self._idle = IdleRelease(self._release_resident)
         self._busy = False
         self._generation = 0
@@ -383,11 +383,21 @@ class ChatPanel:
         self._warm_thread = threading.Thread(target=run, name="suit-o-chat-warm", daemon=True)
         self._warm_thread.start()
 
+    def _chattiness(self) -> str:
+        config = getattr(self.app, "config", None)
+        return str(getattr(config, "chattiness", "normal") or "normal")
+
     def _generate(self, messages: list[dict]) -> Iterator[str]:
         if self._generate_override is not None:
             return self._generate_override(messages)
+        from suit_o.lines.chattiness import ChattinessError, rule_for
+
         settings = load_chat_settings(getattr(self.app, "config_path", None))
-        return stream_reply(settings, messages)
+        try:
+            tokens = rule_for(self._chattiness()).reply_tokens
+        except ChattinessError:
+            tokens = rule_for("normal").reply_tokens
+        return stream_reply(settings, messages, max_tokens=tokens)
 
     def _speak(self, sentence: str) -> None:
         if self.app.match_is_live():

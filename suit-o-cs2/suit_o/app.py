@@ -143,6 +143,8 @@ class SuitOApp:
         )
         if hasattr(self.lines, "set_muted"):
             self.lines.set_muted(config.mute)
+        if hasattr(self.lines, "set_chattiness"):
+            self.lines.set_chattiness(config.chattiness)
         self.detector = EventDetector(config.thresholds)
         self._queue: Queue = Queue(maxsize=128)
         self.processed = 0
@@ -821,6 +823,23 @@ class SuitOApp:
         self.config.menu_greeting = bool(enabled)
         self._after_settings_saved()
 
+    def save_chattiness(self, level: str) -> str:
+        """Set how much Suit-O talks. Takes effect on the next event and chat reply."""
+
+        from suit_o.lines.chattiness import ChattinessError, normalize_chattiness
+
+        try:
+            cleaned = normalize_chattiness(level)
+        except ChattinessError as exc:
+            raise ConfigError(str(exc)) from exc
+        if self.config_path is not None:
+            store_personal_settings(self.config_path, chattiness=cleaned)
+        self.config.chattiness = cleaned
+        if hasattr(self.lines, "set_chattiness"):
+            self.lines.set_chattiness(cleaned)
+        self._after_settings_saved()
+        return cleaned
+
     def save_update_preference(self, check_on_launch: bool) -> None:
         """Remember whether the window should ``git pull`` when it opens."""
 
@@ -863,6 +882,7 @@ class SuitOApp:
                 min_interval=loaded.min_interval,
                 preempt_min_priority=loaded.preempt_min_priority,
                 muted=loaded.mute,
+                chattiness=loaded.chattiness,
             )
         except (OSError, ValueError, yaml.YAMLError) as exc:
             message = f"Kept the previous lines. {exc}"

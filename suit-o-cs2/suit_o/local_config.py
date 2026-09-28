@@ -138,6 +138,7 @@ def store_personal_settings(
     smokes_only: bool | None = None,
     check_on_launch: bool | None = None,
     menu_greeting: bool | None = None,
+    chattiness: str | None = None,
     voice_key: str = "",
     ptt_key: str = "",
     chat_ptt_key: str | None = None,
@@ -179,6 +180,13 @@ def store_personal_settings(
         raise ConfigError("updates.check_on_launch must be true or false")
     if menu_greeting is not None and not isinstance(menu_greeting, bool):
         raise ConfigError("menu_greeting must be true or false")
+    if chattiness is not None:
+        from suit_o.lines.chattiness import ChattinessError, normalize_chattiness
+
+        try:
+            chattiness = normalize_chattiness(chattiness)
+        except ChattinessError as exc:
+            raise ConfigError(str(exc)) from exc
 
     base = read_yaml_mapping(config_path)
     local_path = local_config_path(config_path)
@@ -188,6 +196,8 @@ def store_personal_settings(
         top_level["mute"] = muted
     if menu_greeting is not None:
         top_level["menu_greeting"] = menu_greeting
+    if chattiness is not None:
+        top_level["chattiness"] = chattiness
     _apply_managed(overlay, base, None, top_level)
     _apply_managed(
         overlay,
@@ -353,7 +363,7 @@ def _apply_managed(overlay: dict, base: dict, section: str | None, values: dict)
     if section is None:
         target = overlay
         base_section = base
-        defaults = {"mute": False, "menu_greeting": True}
+        defaults = {"mute": False, "menu_greeting": True, "chattiness": "normal"}
     else:
         current = overlay.get(section)
         target = current if isinstance(current, dict) else {}

@@ -40,6 +40,11 @@ mute: false
 # The Listener tab can turn this off.
 menu_greeting: true
 
+# How much Suit-O talks: quiet (big moments only), normal (skips round-start,
+# warmup, and idle chatter), or chatty (every event). Also sets chat reply
+# length. The Voice tab saves your choice in config.local.yaml.
+chattiness: normal
+
 cooldowns:
   default_seconds: 6
   per_event:

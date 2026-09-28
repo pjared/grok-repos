@@ -150,15 +150,16 @@ def stream_reply(
     messages: list[dict],
     *,
     post: Post | None = None,
+    max_tokens: int = MAX_REPLY_TOKENS,
 ) -> Iterator[str]:
     """Yield text fragments. ``post`` is the HTTP body stream, so tests stay offline."""
 
     sender = post or _http_lines
     try:
         if settings.backend == "openai":
-            yield from _openai(settings, messages, sender)
+            yield from _openai(settings, messages, sender, max_tokens)
         else:
-            yield from _ollama(settings, messages, sender)
+            yield from _ollama(settings, messages, sender, max_tokens)
     except ChatError:
         raise
     except Exception as exc:
@@ -168,14 +169,16 @@ def stream_reply(
         raise ChatError(f"{OLLAMA_SETUP} {detail}".strip()) from exc
 
 
-def _ollama(settings: ChatSettings, messages: list[dict], post: Post) -> Iterator[str]:
+def _ollama(
+    settings: ChatSettings, messages: list[dict], post: Post, max_tokens: int = MAX_REPLY_TOKENS
+) -> Iterator[str]:
     url = settings.ollama_url.rstrip("/") + "/api/chat"
     payload = {
         "model": settings.model,
         "messages": messages,
         "stream": True,
         "keep_alive": KEEP_ALIVE,
-        "options": {"num_predict": MAX_REPLY_TOKENS},
+        "options": {"num_predict": max_tokens},
     }
     try:
         lines = post(url, payload, {})
@@ -187,7 +190,9 @@ def _ollama(settings: ChatSettings, messages: list[dict], post: Post) -> Iterato
             yield piece
 
 
-def _openai(settings: ChatSettings, messages: list[dict], post: Post) -> Iterator[str]:
+def _openai(
+    settings: ChatSettings, messages: list[dict], post: Post, max_tokens: int = MAX_REPLY_TOKENS
+) -> Iterator[str]:
     if not settings.openai_url or not settings.openai_key:
         raise ChatError(OPENAI_SETUP)
     base = settings.openai_url.rstrip("/")
@@ -201,7 +206,7 @@ def _openai(settings: ChatSettings, messages: list[dict], post: Post) -> Iterato
         "model": settings.model,
         "messages": messages,
         "stream": True,
-        "max_tokens": MAX_REPLY_TOKENS,
+        "max_tokens": max_tokens,
     }
     headers = {"Authorization": f"Bearer {settings.openai_key}"}
     try:
