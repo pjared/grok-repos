@@ -10,6 +10,8 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-09-28
+
 ### Added
 
 - Chattiness on the Voice tab: Quiet (big moments and the match result only), Normal, and Chatty (every event). It saves as soon as you pick it and also sets how long chat replies are. (`024f0ee`)
