@@ -10,6 +10,10 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+### Added
+
+- A mic light next to Hold to talk on the Chat tab. It turns green and reads Listening while the push-to-talk key or button is held, and goes back to grey on release. (`e77ae77`)
+
 ## [0.22.1] - 2026-09-27
 
 ### Fixed
