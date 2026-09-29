@@ -11,6 +11,7 @@ import logging
 import re
 import sys
 import threading
+from pathlib import Path
 import time
 from contextlib import contextmanager
 
@@ -108,7 +109,14 @@ class SuitOWindow:
 
         header = ttk.Frame(frame)
         header.grid(row=0, column=0, sticky="ew")
+        # Click to upload Suit-O's icon. Right-click to go back to no icon.
+        self._icon_images: list[tk.PhotoImage] = []
+        self.icon_button = tk.Label(header, cursor="hand2", relief="flat", borderwidth=0)
+        self.icon_button.pack(side="left", padx=(0, 8))
+        self.icon_button.bind("<Button-1>", lambda _event: self._choose_icon())
+        self.icon_button.bind("<Button-3>", self._icon_menu)
         ttk.Label(header, text="Suit-O", font=("TkDefaultFont", 16, "bold")).pack(side="left")
+        self._apply_icon()
         self.version_label = ttk.Label(header, text=self._version_text)
         self.version_label.pack(side="left", padx=(8, 0))
         self.notice = ttk.Label(header, text="", foreground="#0b6e4f")
@@ -737,6 +745,89 @@ class SuitOWindow:
 
     def _open_whats_new(self) -> None:
         self._show_whats_new()
+
+    def _apply_icon(self) -> None:
+        """Show the saved icon in the header, the window, and the taskbar."""
+
+        from suit_o.branding import ICON_ICO, ICON_PNG, ICON_SMALL, icon_file
+
+        small = icon_file(name=ICON_SMALL)
+        large = icon_file(name=ICON_PNG)
+        self._icon_images = []
+        try:
+            if small is None or large is None:
+                self.icon_button.configure(
+                    image="", text="+ Icon", width=6, font=("TkDefaultFont", 9), foreground="#555555"
+                )
+                return
+            header_image = tk.PhotoImage(master=self.root, file=str(small))
+            window_image = tk.PhotoImage(master=self.root, file=str(large))
+            self._icon_images = [header_image, window_image]
+            self.icon_button.configure(image=header_image, text="", width=0)
+            self.root.iconphoto(True, window_image)
+            ico = icon_file(name=ICON_ICO)
+            if ico is not None and sys.platform == "win32":
+                self.root.iconbitmap(default=str(ico))
+        except tk.TclError:
+            logger.debug("Could not show Suit-O's icon", exc_info=True)
+
+    def _choose_icon(self) -> None:
+        from tkinter import filedialog
+
+        from suit_o.branding import ICON_ICO, BrandingError, icon_file, save_icon
+
+        chosen = filedialog.askopenfilename(
+            parent=self.root,
+            title="Choose Suit-O's icon",
+            filetypes=[
+                ("Images", "*.png *.jpg *.jpeg *.webp *.bmp *.gif *.ico"),
+                ("All files", "*.*"),
+            ],
+        )
+        if not chosen:
+            return
+        try:
+            save_icon(Path(chosen))
+        except BrandingError as exc:
+            messagebox.showerror("Suit-O", str(exc))
+            return
+        self._apply_icon()
+        ico = icon_file(name=ICON_ICO)
+        if ico is not None:
+            self._update_shortcut_icon(ico)
+        self.app.note("Suit-O's icon was updated.")
+
+    def _update_shortcut_icon(self, ico) -> None:
+        """Point the Desktop shortcut at the new icon, off the window thread."""
+
+        from suit_o.branding import update_desktop_shortcut
+
+        def work() -> None:
+            try:
+                changed = update_desktop_shortcut(ico)
+            except Exception:
+                logger.debug("Could not update the Desktop shortcut icon", exc_info=True)
+                return
+            if changed:
+                self._ui.call(lambda: self.app.note("The Desktop shortcut uses the new icon too."))
+
+        threading.Thread(target=work, name="suit-o-shortcut-icon", daemon=True).start()
+
+    def _icon_menu(self, event) -> None:
+        menu = tk.Menu(self.root, tearoff=False)
+        menu.add_command(label="Change icon...", command=self._choose_icon)
+        menu.add_command(label="Remove icon", command=self._remove_icon)
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+    def _remove_icon(self) -> None:
+        from suit_o.branding import remove_icon
+
+        remove_icon()
+        self._apply_icon()
+        self.app.note("Suit-O's icon was removed. Restart Suit-O to reset the taskbar icon.")
 
     def _check_installs(self) -> None:
         """Probe optional installs off the window thread, then show or hide the button."""

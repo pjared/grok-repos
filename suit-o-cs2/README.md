@@ -88,6 +88,10 @@ Optional voice settings. Saving them from the window writes `config.local.yaml`;
 
 `speech.backend` may be `pyttsx3`, `clone`, or `stub`. `remote` is still refused at startup. Rate, volume, pause, pitch, and emphasis are the same fields for every backend. Chatterbox has no pitch or words-per-minute control, so pre-rendering applies pitch and rate to the waveform and maps emphasis onto Chatterbox's exaggeration control. Volume is applied when the WAV is played, on the output device from the Listener tab.
 
+## Suit-O's icon
+
+Click **+ Icon** at the top left, next to the Suit-O title, and pick an image (PNG, JPEG, WebP, BMP, GIF, or ICO). Suit-O squares it, and uses it for the window, the taskbar, and the Suit-O shortcut on your Desktop. Right-click the icon to change or remove it. The files live in `branding/`, which git ignores, so Update never replaces your icon.
+
 ## Installations
 
 The optional parts of Suit-O install from the **Installations** button at the top of the window. The button only shows while something is missing, and it hides itself once everything is installed. Tick the parts you want, then click **Install selected**:

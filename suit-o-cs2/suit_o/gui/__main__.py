@@ -96,6 +96,9 @@ def _run(config_path: Path, *, start_muted: bool, open_installs: bool = False) -
         _show_fatal(message)
         return 1
 
+    from suit_o.branding import set_windows_app_id
+
+    set_windows_app_id()
     try:
         from suit_o.gui.window import SuitOWindow
     except ImportError as exc:
