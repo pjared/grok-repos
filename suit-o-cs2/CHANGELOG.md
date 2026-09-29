@@ -10,6 +10,10 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+### Added
+
+- Upload Suit-O's icon by clicking + Icon beside the title. It is used for the window, the taskbar, and the Suit-O shortcut on the Desktop, and it survives updates. Right-click to change or remove it. (`de9c32a`)
+
 ## [0.27.0] - 2026-09-28
 
 ### Added
