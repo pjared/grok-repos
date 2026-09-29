@@ -10,6 +10,8 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-09-29
+
 ### Changed
 
 - Every event has five or more stock lines, so round wins, losses, the menu greeting, and the rest no longer repeat the same sentence. Halftime, a match win, and your own plant have new lines, and four lines that echoed the game's catchphrases are reworded. (`413692e`)
