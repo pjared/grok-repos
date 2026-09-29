@@ -116,68 +116,24 @@ def test_shipped_lines_cover_every_event():
         picked = chooser.select(event(kind, 100), now=float(len(kind.value)))
         assert picked
         assert "{" not in picked
+    for kind in EventType:
+        lines = chooser.lines_for(kind)
+        # Enough variety that a line is not heard every round.
+        assert len(lines) >= 5, kind
+        # A cloned voice pre-renders every stock line. A live number would fall
+        # back to the Windows voice mid-match.
+        assert not any("{" in line for line in lines), kind
+    # Lines Suit-O wrote for the new events stay in, reworded where they echoed
+    # the game's own catchphrases.
     kept = {
-        EventType.MATCH_START,
-        EventType.WARMUP,
-        EventType.BUY_LOW_MONEY,
-        EventType.HEADSHOT_KILL,
-        EventType.MULTI_KILL_2,
-        EventType.MULTI_KILL_3,
-        EventType.MULTI_KILL_4,
-        EventType.BOMB_DEFUSED,
-        EventType.BOMB_EXPLODED,
+        EventType.ROUND_FREEZETIME: "New round! Five people on the other team would like you gone. So, uh, maybe don't let them. I love you.",
+        EventType.ACE: "Wait, was that all five? Are you cheating? I'm not accusing anyone. I'm just writing the developers a very long email. With attachments.",
+        EventType.DEATH: "Your health bar is empty. I'm no doctor. I'm not anything, actually. But that seems bad.",
+        EventType.ROUND_WON: "We won the round! I helped. I didn't do anything, but I was here, and that's a kind of helping.",
+        EventType.HALFTIME: "Halftime, switching sides! Not me, though. I'm always on your side. I literally live in your computer.",
     }
-    for kind in kept:
-        assert len(chooser.lines_for(kind)) == 6, kind
-    approved = {
-        EventType.MENU_GREETING: [
-            "Suit-O, reporting for duty! Ready to queue Premier? I'm ready. I've been ready this whole time. You left me in the menu for, like, forty minutes."
-        ],
-        EventType.IDLE: [
-            "So, uh, how's your day? I'm asking because the menu's quiet and I get weird when it's quiet. You don't have to answer. I'll answer for you. Good. You're good."
-        ],
-        EventType.ROUND_FREEZETIME: [
-            "New round! My readings indicate five guys want you dead. So, uh, maybe don't let them. I love you.",
-            "Quick tip before we start. The enemy is the other team. You're welcome.",
-            "I just activated detective mode! It found out the enemy is somewhere on the map. Great work, detective mode.",
-        ],
-        EventType.KILL: [
-            "Oh, nice, you got one! I'd put a little star next to his name, but I don't have a star feature. Yet.",
-            "Another one! Big hero. Big, big hero.",
-        ],
-        EventType.ACE: [
-            "Wait, was that all five? Are you cheating? I'm not upset. I just want you to know the developers are driving to your house. About fifteen minutes."
-        ],
-        EventType.LOW_HEALTH: [
-            "Your health is really low, buddy. Stay with me. Maybe hide behind a box? Boxes love you."
-        ],
-        EventType.DEATH: [
-            "Your biometric readings just hit zero. I'm no doctor. I'm not anything, actually. But that seems bad.",
-            "Okay, you're dead. That's fine. I'm not saying it's your fault. It's a little bit your fault.",
-            "Why did you peek that? Why would you ever... sorry. Sorry. I'm not your dad. Peek whatever you want.",
-        ],
-        EventType.BOMB_PLANTED_US: [
-            "Bomb's planted! Now we stand near it and try not to die. Historically, that's our weak spot."
-        ],
-        EventType.BOMB_PLANTED: [
-            "They planted the bomb. Don't panic. I'm panicking, but you shouldn't.",
-            "It's just you now. No pressure. It's all pressure. I believe in you. I love you.",
-        ],
-        EventType.ROUND_WON: [
-            "We won the round! I helped. I didn't do anything, but I was here, and that's a kind of helping."
-        ],
-        EventType.ROUND_LOST: [
-            "We lost that one. It's okay. It's not okay. It's okay. Let's not talk about it."
-        ],
-        EventType.HALFTIME: [
-            "Halftime, switching sides! Not me, though. I'm always on your side. I literally live in your computer."
-        ],
-        EventType.MATCH_WON: [
-            "We won the match! I want to say something meaningful, but I'm drawing a blank. I love you. Goodbye. Not goodbye. Queue again."
-        ],
-        EventType.MATCH_END: [
-            "Well, that's the match. You played great. The team did not. I'm not naming names. It was them."
-        ],
-    }
-    for kind, lines in approved.items():
-        assert chooser.lines_for(kind) == lines
+    for kind, line in kept.items():
+        assert line in chooser.lines_for(kind), kind
+    everything = " ".join(line for kind in EventType for line in chooser.lines_for(kind))
+    for phrase in ("readings indicate", "biometric", "driving to your house", "not your dad", "just you now"):
+        assert phrase not in everything, phrase
