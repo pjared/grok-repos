@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -32,6 +33,8 @@ class _Job:
     bypass_mute: bool = False
     tuning: VoiceTuning | None = None
     backend: SpeechBackend | None = None
+    # Monotonic time after which this line is too old to be worth saying.
+    expires_at: float | None = None
 
 
 class SpeechService:
@@ -54,6 +57,8 @@ class SpeechService:
         self._thread = threading.Thread(target=self._loop, name="suit-o-speech", daemon=True)
         self._started = False
         self.on_dropped: Callable[[Utterance], None] | None = None
+        self.on_stale: Callable[[Utterance], None] | None = None
+        self._clock: Callable[[], float] = time.monotonic
 
     def start(self) -> None:
         if self._started:
@@ -68,13 +73,18 @@ class SpeechService:
         bypass_mute: bool = False,
         tuning: VoiceTuning | None = None,
         backend: SpeechBackend | None = None,
+        max_age: float | None = None,
     ) -> None:
+        """Queue a line. With ``max_age``, a line still waiting after that many
+        seconds is dropped instead of spoken late."""
+
         dropped: list[_Job] = []
         with self._cv:
             if self._stop or (self._muted and not bypass_mute):
                 return
             override = None if tuning is None else normalize_tuning(tuning)
-            self._pending.append(_Job(utterance, bypass_mute, override, backend))
+            expires = None if max_age is None else self._clock() + max_age
+            self._pending.append(_Job(utterance, bypass_mute, override, backend, expires))
             self._pending.sort(key=lambda item: -item.utterance.priority)
             if len(self._pending) > _MAX_PENDING:
                 dropped = self._pending[_MAX_PENDING :]
@@ -290,8 +300,16 @@ class SpeechService:
                     or backend is not _NO_BACKEND
                 )
                 job: _Job | None = None
-                if self._pending:
-                    job = self._pending.pop(0)
+                expired: list[_Job] = []
+                now = self._clock()
+                while self._pending:
+                    candidate = self._pending.pop(0)
+                    if candidate.expires_at is not None and now > candidate.expires_at:
+                        expired.append(candidate)
+                        continue
+                    job = candidate
+                    break
+                if job is not None:
                     if self._muted and not job.bypass_mute:
                         job = None
                     else:
@@ -303,6 +321,14 @@ class SpeechService:
                 with self._cv:
                     self._applying = False
                     self._cv.notify_all()
+            stale = self.on_stale
+            for old in expired:
+                logger.info("Dropped a %s line that waited too long to play", old.utterance.event_type)
+                if stale is not None:
+                    try:
+                        stale(old.utterance)
+                    except Exception:
+                        logger.exception("Could not record a dropped line")
             if job is None:
                 continue
             completed = False

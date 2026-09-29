@@ -60,6 +60,8 @@ TEST_VOICE_LINE = (
 )
 
 _LOG_LIMIT = 200
+# A game line still waiting this many seconds is dropped, not spoken late.
+GAME_LINE_MAX_AGE = 6.0
 
 
 @dataclass(frozen=True)
@@ -133,6 +135,7 @@ class SuitOApp:
         self.backend = backend if backend is not None else self._backend_factory(config.speech)
         self.speech = SpeechService(self.backend, config.preempt_min_priority)
         self.speech.on_dropped = self._on_speech_dropped
+        self.speech.on_stale = self._on_speech_stale
         self.lines = line_provider or YamlLineProvider.from_file(
             config.lines_path,
             cooldowns=config.cooldowns,
@@ -1052,7 +1055,8 @@ class SuitOApp:
             if decision.status == "spoken" and decision.text:
                 self._log_speech(event.type.value, decision.text, "spoken")
                 self.speech.submit(
-                    Utterance(event_type=event.type.value, text=decision.text, priority=event.priority)
+                    Utterance(event_type=event.type.value, text=decision.text, priority=event.priority),
+                    max_age=GAME_LINE_MAX_AGE,
                 )
             else:
                 self._log_speech(event.type.value, "", decision.status)
@@ -1086,6 +1090,9 @@ class SuitOApp:
 
     def _on_speech_dropped(self, utterance: Utterance) -> None:
         self._log_speech(utterance.event_type, utterance.text, "queue full")
+
+    def _on_speech_stale(self, utterance: Utterance) -> None:
+        self._log_speech(utterance.event_type, utterance.text, "too late")
 
     def _log_speech(self, event: str, text: str, status: str) -> None:
         """Show a spoken line, or why a detected event was not spoken."""

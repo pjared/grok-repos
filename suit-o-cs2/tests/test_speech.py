@@ -443,3 +443,24 @@ class _Engine:
 
     def stop(self) -> None:
         return None
+
+
+def test_a_game_line_that_waited_too_long_is_dropped_not_spoken_late():
+    backend = HoldBackend()
+    service = SpeechService(backend, preempt_min_priority=70)
+    now = {"t": 100.0}
+    service._clock = lambda: now["t"]
+    stale: list[str] = []
+    service.on_stale = lambda utterance: stale.append(utterance.text)
+    service.start()
+    try:
+        service.submit(Utterance("kill", "first", 36))
+        assert backend.started.wait(2)
+        service.submit(Utterance("death", "old news", 82), max_age=6.0)
+        service.submit(Utterance("chat", "no expiry", 100))
+        now["t"] = 107.0
+        backend.release.set()
+        assert service.wait_until(lambda: backend.spoken == ["first", "no expiry"], 2)
+        assert stale == ["old news"]
+    finally:
+        service.stop()
