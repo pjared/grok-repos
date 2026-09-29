@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 MAX_BODY_BYTES = 1_000_000
 _GSI_PATHS = frozenset({"/", ""})
+_LOOPBACK_NAMES = frozenset({"127.0.0.1", "localhost", "[::1]"})
 
 
 class GsiServer(ThreadingHTTPServer):
@@ -50,6 +51,9 @@ class GsiHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
         if path == "/status":
+            if not self._local_tool():
+                self._reject(403, b'{"error":"forbidden"}', "browser request")
+                return
             body = json.dumps(self.server.status()).encode("utf-8")
             self._reply(200, body)
             return
@@ -58,6 +62,9 @@ class GsiHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
         if path == "/mute":
+            if not self._local_tool():
+                self._reject(403, b'{"error":"forbidden"}', "browser request")
+                return
             muted = self.server.on_toggle_mute()
             body = json.dumps({"muted": muted}).encode("utf-8")
             self._reply(200, body)
@@ -99,6 +106,24 @@ class GsiHandler(BaseHTTPRequestHandler):
             self._reject(200, b'{"ok":true}', "queue full")
             return
         self._reply(200, b'{"ok":true}')
+
+    def _local_tool(self) -> bool:
+        """True for a terminal or script on this PC, not a web page.
+
+        ``/mute`` and ``/status`` have no token, so a page open in a browser
+        could otherwise toggle mute (a cross-site POST) or read status through
+        a hostname that points at this PC. Browsers always send ``Origin`` on
+        those requests, and a rebound hostname shows up in ``Host``. curl and
+        PowerShell send neither.
+        """
+
+        if self.headers.get("Origin") is not None:
+            return False
+        host = (self.headers.get("Host") or "").strip().lower()
+        if not host:
+            return True
+        name = host.rsplit(":", 1)[0] if not host.startswith("[") else host.split("]", 1)[0] + "]"
+        return name in _LOOPBACK_NAMES
 
     def _reject(self, code: int, body: bytes, reason: str) -> None:
         callback = self.server.on_rejected

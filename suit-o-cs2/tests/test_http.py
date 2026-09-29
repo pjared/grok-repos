@@ -68,3 +68,33 @@ def test_token_rejection_mute_and_nonblocking_post():
         assert status_body["muted"] is True
     finally:
         app.stop()
+
+
+def test_a_web_page_cannot_toggle_mute_or_read_status():
+    config = simulation_config(DEFAULT_CONFIG_PATH)
+    app = SuitOApp(config, backend=HoldBackend())
+    app.start()
+    try:
+        host, port = app.server_address
+        base = f"http://{host}:{port}"
+        blocked = [
+            urllib.request.Request(base + "/mute", data=b"", method="POST", headers={"Origin": "https://evil.example"}),
+            urllib.request.Request(base + "/mute", data=b"", method="POST", headers={"Host": f"evil.example:{port}"}),
+            urllib.request.Request(base + "/status", headers={"Host": f"rebound.example:{port}"}),
+            urllib.request.Request(base + "/status", headers={"Origin": "null"}),
+        ]
+        for request in blocked:
+            try:
+                urllib.request.urlopen(request, timeout=2)
+                refused = False
+            except urllib.error.HTTPError as exc:
+                refused = exc.code == 403
+                exc.read()
+            assert refused, request.full_url
+        assert app.snapshot().muted is False
+        for name in ("localhost", "127.0.0.1"):
+            local = urllib.request.Request(base + "/status", headers={"Host": f"{name}:{port}"})
+            with urllib.request.urlopen(local, timeout=2) as response:
+                assert response.status == 200
+    finally:
+        app.stop()
