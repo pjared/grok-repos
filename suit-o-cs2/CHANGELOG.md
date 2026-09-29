@@ -10,6 +10,16 @@ New notes go under `## [Unreleased]`. Do not add a heading for today's date. Und
 
 ## [Unreleased]
 
+### Changed
+
+- Every event has five or more stock lines, so round wins, losses, the menu greeting, and the rest no longer repeat the same sentence. Halftime, a match win, and your own plant have new lines, and four lines that echoed the game's catchphrases are reworded. (`413692e`)
+
+### Fixed
+
+- A web page can no longer toggle Suit-O's mute or read its status. `/mute` and `/status` answer only local tools such as PowerShell and curl. (`e4555af`)
+- In a busy moment, a game line that waited more than six seconds to play is dropped instead of spoken late. The activity log shows it as skipped (too late). (`97dd8f1`)
+- The enemy-plant line that assumed you were the last one alive, and the broke-buy line with a live dollar amount that a cloned voice could not play, are removed. (`413692e`)
+
 ## [0.28.0] - 2026-09-29
 
 ### Added
