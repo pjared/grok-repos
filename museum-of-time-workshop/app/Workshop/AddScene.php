@@ -138,7 +138,7 @@ class AddScene
             'shot_id' => $shot->id,
             'type' => $type,
             'offset_s' => 0,
-            'text' => $text !== '' ? $text : 'Narration',
+            'text' => $text !== '' ? $text : null,
             'voice' => $type === CueType::Narration ? ($voice !== null && $voice !== '' ? (string) $voice : null) : null,
             'audio_path' => $type === CueType::Narration ? $audio : null,
         ]);

@@ -15,10 +15,16 @@ class MediaLibrary
 
     public ?string $linkNotice = null;
 
+    private static bool $linkResolved = false;
+
+    private static ?string $linkNoticeMemo = null;
+
     public static function forgetCache(): void
     {
         self::$probes = [];
         self::$probeCount = 0;
+        self::$linkResolved = false;
+        self::$linkNoticeMemo = null;
     }
 
     public function root(): ?string
@@ -36,14 +42,24 @@ class MediaLibrary
 
     public function link(): void
     {
+        if (self::$linkResolved) {
+            $this->linkNotice = self::$linkNoticeMemo;
+
+            return;
+        }
+
+        self::$linkResolved = true;
+
         try {
             $this->placeLink();
-            $this->linkNotice = null;
+            self::$linkNoticeMemo = null;
         } catch (\Throwable $exception) {
-            $this->linkNotice = $exception->getMessage() !== ''
+            self::$linkNoticeMemo = $exception->getMessage() !== ''
                 ? $exception->getMessage()
                 : 'Media library could not be linked.';
         }
+
+        $this->linkNotice = self::$linkNoticeMemo;
     }
 
     /**
@@ -208,7 +224,7 @@ class MediaLibrary
         }
 
         foreach ($slugs as $slug) {
-            if (str_contains($relative, $slug)) {
+            if (in_array($slug, $parts, true)) {
                 return $slug;
             }
         }
@@ -271,9 +287,14 @@ class MediaLibrary
             }
 
             unlink($link);
-        }
+        } elseif (is_dir($link)) {
+            if (realpath($link) === $root) {
+                return;
+            }
 
-        if (file_exists($link)) {
+            // A Windows junction is a directory. rmdir removes the junction, not the target.
+            rmdir($link);
+        } elseif (file_exists($link)) {
             return;
         }
 

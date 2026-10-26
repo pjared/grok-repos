@@ -184,7 +184,9 @@ class Workshop extends Component
 
         try {
             $submission = $importer->submit($sequence->exhibit->slug);
-            $this->notice = $submission->filename.' is waiting for approval.';
+            $this->notice = $submission->status === ScenePackStatus::Invalid
+                ? ($submission->error ?: 'Exhibit pack could not be imported.')
+                : $submission->filename.' is waiting for approval.';
         } catch (\Throwable $exception) {
             $this->notice = $exception->getMessage() !== ''
                 ? $exception->getMessage()

@@ -7,7 +7,7 @@ flowchart LR
   subgraph rail [Sections]
     Editor
     Exhibits
-    Wings["Wings and Halls"]
+    Wings["Wings & Halls"]
     Assets
   end
 
@@ -61,7 +61,7 @@ A `Sequence` belongs to an exhibit. A `Shot` belongs to a sequence and keeps its
 | `runway` | Stub. Off unless `RUNWAY_ENABLED` is set, and still throws without calling the network. |
 | `kling` | Stub. Off unless `KLING_ENABLED` is set, and still throws without calling the network. |
 
-A `VoiceProvider` for ElevenLabs is planned and is not in the tree. Narration is not synthesized. It is written as `mov_text` subtitles, with an optional audio file path on the cue when a clip already exists.
+A `VoiceProvider` for ElevenLabs is planned and is not in the tree. Narration is not synthesized. Narration text is written as `mov_text` subtitles. An audio-only cue stores the audio path and an empty text column, and it does not add a subtitle.
 
 ## Agent entry points
 
@@ -77,7 +77,7 @@ The editor's Import scenes button takes a `.zip` and copies it into the inbox. A
 
 The house standard is a 16:9 episode of 3–4 minutes (1280×720, 180–240 seconds) and 9:16 shorts of 45–60 seconds (720×1280). Shorts are packed from whole shots and never split a shot. A single shot longer than the cap becomes its own short, with a warning. Shorts are padded with `#0f1014`.
 
-Each short is stamped `Museum of Time · {Wing} · {Exhibit} · Short N of M`. Plaque and stamp text are written to temp files under `storage/app/drawtext` and drawn with ffmpeg `drawtext` `textfile=` and `expansion=none`. Invented plaques are left off the burn-in. Narration is a subtitle track.
+Each short is stamped `Museum of Time · {Wing} · {Exhibit} · Short N of M`. Plaque and stamp text are written to temp files under `storage/app/drawtext` and drawn with ffmpeg `drawtext` `textfile=` and `expansion=none`. Invented plaques are left off the burn-in. Narration text is a subtitle track. Audio-only narration cues are skipped.
 
 ## Media library
 

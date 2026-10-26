@@ -8,7 +8,12 @@ use App\Models\ScenePackSubmission;
 use App\Models\Shot;
 use App\Providers\AppServiceProvider;
 use App\Sections\Assets\Livewire\Index;
+use App\Sections\Editor\Livewire\Workshop;
+use App\Video\EpisodeExporter;
+use App\Video\ShortsExporter;
+use App\Video\SubtitleBuilder;
 use App\Workshop\AddScene;
+use App\Workshop\ExhibitImporter;
 use App\Workshop\ExhibitNotes;
 use App\Workshop\ExhibitSequences;
 use App\Workshop\MediaLibrary;
@@ -207,17 +212,127 @@ it('keeps an exhibit draft when the only matching clip belongs to another exhibi
         ->and(is_file($foreign))->toBeTrue();
 });
 
-it('boots when linking the media library throws', function () {
-    $library = new class extends MediaLibrary
-    {
-        public function link(): void
-        {
-            throw new RuntimeException('link failed');
-        }
-    };
+it('does not link the media library during boot', function () {
+    $library = Mockery::mock(MediaLibrary::class);
+    $library->shouldNotReceive('link');
     $this->app->instance(MediaLibrary::class, $library);
 
-    expect(fn () => (new AppServiceProvider($this->app))->boot())->not->toThrow(RuntimeException::class);
+    (new AppServiceProvider($this->app))->boot();
+});
+
+it('links the media library once per request', function () {
+    $root = storage_path('framework/testing/media-once-'.uniqid());
+    File::ensureDirectoryExists($root);
+    $link = storage_path('app/public/media');
+
+    if (is_link($link)) {
+        unlink($link);
+    }
+
+    config(['workshop.media_root' => $root]);
+    MediaLibrary::forgetCache();
+    File::partialMock()->shouldReceive('link')->once()->andReturnUsing(function (string $target, string $path) {
+        symlink($target, $path);
+    });
+
+    app(MediaLibrary::class)->link();
+    app(MediaLibrary::class)->link();
+
+    expect(is_link($link))->toBeTrue()
+        ->and(realpath($link))->toBe(realpath($root));
+});
+
+it('replaces a stale directory junction with rmdir', function () {
+    $root = storage_path('framework/testing/media-junction-'.uniqid());
+    File::ensureDirectoryExists($root);
+    $link = storage_path('app/public/media');
+
+    if (is_link($link)) {
+        unlink($link);
+    }
+
+    File::ensureDirectoryExists($link);
+    config(['workshop.media_root' => $root]);
+    MediaLibrary::forgetCache();
+    app(MediaLibrary::class)->link();
+
+    expect(is_link($link))->toBeTrue()
+        ->and(realpath($link))->toBe(realpath($root));
+});
+
+it('groups media by a path segment', function () {
+    [$archive, $media] = sampleArchive();
+    renderMedia($media.'/library/sample-exhibit-extra.mp4', 'mp4');
+    config([
+        'workshop.archive' => $archive,
+        'workshop.media_root' => $media,
+    ]);
+
+    $groups = collect(app(MediaLibrary::class)->groups());
+    $sample = $groups->firstWhere('exhibit', 'sample-exhibit');
+    $library = $groups->firstWhere('exhibit', 'library');
+
+    expect(collect($sample['files'])->pluck('name'))->not->toContain('sample-exhibit-extra.mp4')
+        ->and(collect($library['files'])->pluck('name'))->toContain('sample-exhibit-extra.mp4');
+});
+
+it('shows the invalid exhibit error in the editor', function () {
+    museum();
+    $submission = new ScenePackSubmission([
+        'filename' => 'gala-arrest.json',
+        'status' => ScenePackStatus::Invalid,
+        'error' => 'Scene pack must include an exhibit and at least one scene.',
+    ]);
+    $importer = Mockery::mock(ExhibitImporter::class);
+    $importer->shouldReceive('submit')->once()->with('gala-arrest')->andReturn($submission);
+    $this->app->instance(ExhibitImporter::class, $importer);
+
+    Livewire::test(Workshop::class)
+        ->call('importCurrentExhibit')
+        ->assertSet('notice', 'Scene pack must include an exhibit and at least one scene.');
+});
+
+it('imports audio-only narration without a subtitle entry', function () {
+    [$archive, $media] = sampleArchive();
+    config([
+        'workshop.archive' => $archive,
+        'workshop.media_root' => $media,
+    ]);
+    app(MediaLibrary::class)->link();
+    museum();
+
+    $directory = storage_path('framework/testing/scene-pack-'.uniqid());
+    File::ensureDirectoryExists($directory);
+    File::put($directory.'/audio-only.json', json_encode([
+        'exhibit' => 'gala-arrest',
+        'scenes' => [[
+            'title' => 'Voice only',
+            'frame_path' => 'media/previews/sample-exhibit/F1.jpg',
+            'clip_path' => 'media/exhibits/sample-exhibit/F1.mp4',
+            'narration_audio' => 'media/assets/audio/sample-exhibit/sample-01.mp3',
+        ]],
+    ], JSON_THROW_ON_ERROR));
+
+    $shots = ScenePack::load($directory.'/audio-only.json')->import(app(AddScene::class));
+    $cue = $shots[0]->cues()->where('type', CueType::Narration)->first();
+    $srt = SubtitleBuilder::write([
+        ['start' => 0.0, 'end' => 4.0, 'text' => $cue->text],
+    ]);
+
+    expect($cue->text)->toBeNull()
+        ->and($cue->audio_path)->toBe('media/assets/audio/sample-exhibit/sample-01.mp3')
+        ->and(trim((string) file_get_contents($srt)))->toBe('');
+
+    $sequence = $shots[0]->sequence;
+    $episode = app(EpisodeExporter::class)->export($sequence);
+    $episodeProbe = ffprobe(Storage::disk('public')->path($episode->path));
+    $shorts = app(ShortsExporter::class)->export($sequence->fresh());
+    $shortProbe = ffprobe(Storage::disk('public')->path($shorts->files[0]['path']));
+
+    expect(collect($episodeProbe['streams'])->pluck('codec_type'))->not->toContain('subtitle')
+        ->and(collect($shortProbe['streams'])->pluck('codec_type'))->not->toContain('subtitle');
+
+    @unlink($srt);
 });
 
 it('shows a notice on the assets page when the media link fails', function () {
