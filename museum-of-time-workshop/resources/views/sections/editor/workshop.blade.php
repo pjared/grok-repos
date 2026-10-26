@@ -246,7 +246,7 @@
             @if ($pendingPacks->isNotEmpty())
                 <section class="shrink-0 rounded-[14px] bg-[#16171d] px-4 py-3">
                     <h2 class="font-semibold">Inbox</h2>
-                    <p class="mt-1 text-xs text-[#6c6c78]">Dropped packs stay pending until you approve them.</p>
+                    <p class="mt-1 text-xs text-[#6c6c78]">Imported and dropped packs stay pending until you approve them.</p>
                     <ul class="mt-3 space-y-2">
                         @foreach ($pendingPacks as $pack)
                             <li class="flex flex-wrap items-center gap-3 rounded-lg bg-[#22232b] px-3 py-2 text-sm" wire:key="pack-{{ $pack->id }}">
@@ -269,7 +269,7 @@
                 <div class="flex items-center justify-between gap-3">
                     <h2 class="font-semibold">Timeline</h2>
                     <form wire:submit="importPack" class="flex items-center gap-2">
-                        <input wire:model="packUpload" type="file" accept="application/json,.json" class="max-w-[180px] text-[11px] text-[#8a8a96] file:mr-2 file:rounded-md file:border-0 file:bg-[#22232b] file:px-2 file:py-1 file:text-[11px] file:text-[#d7ccff]">
+                        <input wire:model="packUpload" type="file" accept=".zip,application/zip" class="max-w-[180px] text-[11px] text-[#8a8a96] file:mr-2 file:rounded-md file:border-0 file:bg-[#22232b] file:px-2 file:py-1 file:text-[11px] file:text-[#d7ccff]">
                         <button type="submit" class="h-7 shrink-0 rounded-lg bg-[#22232b] px-2 text-xs text-[#d7ccff]">Import scenes</button>
                     </form>
                 </div>

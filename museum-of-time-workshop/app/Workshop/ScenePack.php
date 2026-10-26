@@ -59,6 +59,8 @@ class ScenePack
 
                 self::resolveFrame($directory, $scene['frame'], $number);
             }
+
+            self::assertPlacement($scene, $number);
         }
 
         return new self($exhibit, array_values($scenes), $directory);
@@ -69,59 +71,125 @@ class ScenePack
      */
     public function import(AddScene $addScene): array
     {
-        return DB::transaction(function () use ($addScene) {
-            $sequence = ExhibitSequences::find($this->exhibit);
-            $created = [];
+        $copied = [];
 
-            foreach ($this->scenes as $scene) {
-                $sequence->refresh();
-                $after = $this->after($sequence, $scene['after'] ?? null);
-                $attributes = [
-                    'title' => $scene['title'] ?? null,
-                    'prompt' => $scene['prompt'] ?? '',
-                    'duration' => $scene['duration'] ?? AddScene::DEFAULT_DURATION,
-                    'truth' => $scene['truth'] ?? 'invented',
-                    'model' => $scene['model'] ?? AddScene::DEFAULT_MODEL,
-                    'frame_path' => $this->storeFrame($sequence, $scene['frame'] ?? null),
-                    'narration' => $scene['narration'] ?? null,
-                    'voice' => $scene['voice'] ?? null,
-                    'plaque' => $scene['plaque'] ?? null,
-                ];
+        try {
+            return DB::transaction(function () use ($addScene, &$copied) {
+                $sequence = ExhibitSequences::find($this->exhibit);
+                $created = [];
 
-                $created[] = $after
-                    ? $addScene->insertAfter($sequence, $after, $attributes)
-                    : $addScene->append($sequence, $attributes);
-            }
+                foreach ($this->scenes as $scene) {
+                    $sequence->refresh();
+                    $after = $this->after($sequence, $scene);
+                    $frame = $this->storeFrame($sequence, $scene['frame'] ?? null);
 
-            return $created;
-        });
+                    if (is_string($frame)) {
+                        $copied[] = $frame;
+                    }
+
+                    $attributes = [
+                        'title' => $scene['title'] ?? null,
+                        'prompt' => $scene['prompt'] ?? '',
+                        'duration' => $scene['duration'] ?? AddScene::DEFAULT_DURATION,
+                        'truth' => $scene['truth'] ?? 'invented',
+                        'model' => $scene['model'] ?? AddScene::DEFAULT_MODEL,
+                        'frame_path' => $frame,
+                        'narration' => $scene['narration'] ?? null,
+                        'voice' => $scene['voice'] ?? null,
+                        'plaque' => $scene['plaque'] ?? null,
+                    ];
+
+                    $created[] = $after
+                        ? $addScene->insertAfter($sequence, $after, $attributes)
+                        : $addScene->append($sequence, $attributes);
+                }
+
+                return $created;
+            });
+        } catch (\Throwable $exception) {
+            Storage::disk('public')->delete($copied);
+
+            throw $exception;
+        }
     }
 
-    private function after(Sequence $sequence, mixed $after): ?Shot
+    /**
+     * @param  array<string, mixed>  $scene
+     */
+    private function after(Sequence $sequence, array $scene): ?Shot
     {
-        if ($after === null || $after === '') {
+        [$id, $order] = self::placement($scene, 0);
+
+        if ($id === null && $order === null) {
             return null;
         }
 
-        if (! is_numeric($after)) {
-            throw new \InvalidArgumentException('Scene "after" must be a shot id or order number.');
-        }
-
-        $needle = (int) $after;
         $shots = $sequence->shots()->get();
-        $byId = $shots->firstWhere('id', $needle);
 
-        if ($byId) {
-            return $byId;
+        if ($id !== null) {
+            $shot = $shots->firstWhere('id', $id);
+
+            if (! $shot) {
+                throw new \InvalidArgumentException("No shot id {$id} on this sequence to insert after.");
+            }
+
+            return $shot;
         }
 
-        $byOrder = $shots->first(fn (Shot $shot) => (int) $shot->order === $needle);
+        $shot = $shots->first(fn (Shot $candidate) => (int) $candidate->order === $order);
 
-        if ($byOrder) {
-            return $byOrder;
+        if (! $shot) {
+            throw new \InvalidArgumentException("No shot at order {$order} on this sequence to insert after.");
         }
 
-        throw new \InvalidArgumentException("No shot {$after} on this sequence to insert after.");
+        return $shot;
+    }
+
+    /**
+     * @param  array<string, mixed>  $scene
+     */
+    private static function assertPlacement(array $scene, int $sceneNumber): void
+    {
+        self::placement($scene, $sceneNumber);
+    }
+
+    /**
+     * @param  array<string, mixed>  $scene
+     * @return array{0: ?int, 1: ?int}
+     */
+    private static function placement(array $scene, int $sceneNumber): array
+    {
+        $label = $sceneNumber > 0 ? "Scene {$sceneNumber}" : 'Scene';
+
+        if (self::present($scene['after'] ?? null)) {
+            throw new \InvalidArgumentException("{$label} uses ambiguous \"after\". Use after_id or after_order.");
+        }
+
+        $hasId = self::present($scene['after_id'] ?? null);
+        $hasOrder = self::present($scene['after_order'] ?? null);
+
+        if ($hasId && $hasOrder) {
+            throw new \InvalidArgumentException("{$label} cannot set both after_id and after_order.");
+        }
+
+        return [
+            $hasId ? self::wholeNumber($scene['after_id'], "{$label} after_id must be a shot id.") : null,
+            $hasOrder ? self::wholeNumber($scene['after_order'], "{$label} after_order must be an order number.") : null,
+        ];
+    }
+
+    private static function present(mixed $value): bool
+    {
+        return $value !== null && $value !== '';
+    }
+
+    private static function wholeNumber(mixed $value, string $message): int
+    {
+        if (is_int($value) || (is_string($value) && preg_match('/^\d+$/', $value) === 1)) {
+            return (int) $value;
+        }
+
+        throw new \InvalidArgumentException($message);
     }
 
     private function storeFrame(Sequence $sequence, mixed $relative): ?string
@@ -145,24 +213,38 @@ class ScenePack
 
     private static function resolveFrame(string $directory, string $relative, int $sceneNumber): string
     {
-        $label = $sceneNumber > 0 ? "Scene {$sceneNumber} is missing frame \"{$relative}\"." : "Scene pack is missing frame \"{$relative}\".";
+        $inside = $sceneNumber > 0
+            ? "Scene {$sceneNumber} frame \"{$relative}\" must stay inside the pack."
+            : "Scene pack frame \"{$relative}\" must stay inside the pack.";
+        $missing = $sceneNumber > 0
+            ? "Scene {$sceneNumber} is missing frame \"{$relative}\"."
+            : "Scene pack is missing frame \"{$relative}\".";
         $normalized = str_replace('\\', '/', $relative);
 
-        if ($normalized === '' || str_starts_with($normalized, '/') || str_contains($normalized, '..')) {
-            throw new \InvalidArgumentException($label);
+        if (
+            $normalized === ''
+            || str_starts_with($normalized, '/')
+            || str_contains($normalized, '..')
+            || preg_match('/^[A-Za-z]:/', $normalized) === 1
+        ) {
+            throw new \InvalidArgumentException($inside);
         }
 
         $directory = realpath($directory);
 
         if ($directory === false) {
-            throw new \InvalidArgumentException($label);
+            throw new \InvalidArgumentException($missing);
         }
 
         $candidate = $directory.DIRECTORY_SEPARATOR.str_replace('/', DIRECTORY_SEPARATOR, $normalized);
         $real = realpath($candidate);
 
-        if ($real === false || ! is_file($real) || ! str_starts_with($real, $directory.DIRECTORY_SEPARATOR)) {
-            throw new \InvalidArgumentException($label);
+        if ($real !== false && ! str_starts_with($real, $directory.DIRECTORY_SEPARATOR)) {
+            throw new \InvalidArgumentException($inside);
+        }
+
+        if ($real === false || ! is_file($real)) {
+            throw new \InvalidArgumentException(is_link($candidate) ? $inside : $missing);
         }
 
         return $real;

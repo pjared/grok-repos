@@ -70,7 +70,7 @@ Plaque cues are burned into the picture. Narration cues become a subtitle track.
 
 `FakeProvider` builds each shot with ffmpeg: a Ken Burns move when the shot has one frame, or a crossfade into the next shot's frame. `Runway` and `Kling` are registered and off. Enabling them still does not send HTTP. They throw until a real client exists.
 
-Plaque lines and the short stamp are written to temporary text files and drawn with `drawtext=textfile` and `expansion=none`, then those files are removed. A shot with no frame is refused for render and export.
+Plaque lines and the short stamp are written under `storage/app/drawtext` and drawn with `drawtext=textfile` and `expansion=none`, then those files are removed. A shot with no frame is refused for render and export.
 
 ## Scenes
 
@@ -79,18 +79,18 @@ Plaque lines and the short stamp are written to temporary text files and drawn w
 The same insert goes through `App\Workshop\AddScene` for the buttons, the command, and scene packs:
 
 ```bash
-php artisan workshop:add-scene --exhibit=gala-arrest --after=3 --prompt="..." --duration=4 --truth=invented --frame=frames/ring.jpg --narration="..." --plaque="..."
+php artisan workshop:add-scene --exhibit=gala-arrest --after-order=3 --prompt="..." --duration=4 --truth=invented --frame=frames/ring.jpg --narration="..." --plaque="..."
 ```
 
-The command prints the new shot as JSON. `--after` is a shot id when one matches, otherwise an order number. Omit it to append.
+The command prints the new shot as JSON. `--after-id` is a shot id. `--after-order` is an order number. Pass one of them, or omit both to append.
 
-A scene pack is a JSON file. Frame paths are relative to that file. See [docs/scene-pack.md](docs/scene-pack.md).
+A scene pack is a JSON file, or a `.zip` of that JSON plus its frames. Frame paths are relative to the JSON file. See [docs/scene-pack.md](docs/scene-pack.md).
 
 ```bash
 php artisan workshop:import-scenes path/to/pack.json
 ```
 
-The editor's Import scenes button uses the same file. A pack dropped in the inbox (`WORKSHOP_INBOX`, default `storage/app/inbox`) shows up as pending. Approve adds the scenes. Reject leaves the sequence unchanged. Invalid JSON or a missing frame is reported and is not imported.
+The editor's Import scenes button takes a `.zip` and puts it in the inbox as pending. A JSON file or a `.zip` dropped in the inbox (`WORKSHOP_INBOX`, default `storage/app/inbox`) uses that same gate. Approve adds the scenes. Reject leaves the sequence unchanged. Invalid JSON, a missing frame, or a frame path that leaves the pack is reported and is not imported.
 
 ## Sections
 
