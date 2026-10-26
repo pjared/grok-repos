@@ -69,6 +69,15 @@ class Shot extends Model
         $this->characters()->detach($character->id);
     }
 
+    public function hasFrame(): bool
+    {
+        if (! $this->frame_path) {
+            return false;
+        }
+
+        return is_file(Storage::disk('public')->path($this->frame_path));
+    }
+
     public function frameUrl(): ?string
     {
         return $this->frame_path ? Storage::disk('public')->url($this->frame_path) : null;

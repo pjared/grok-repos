@@ -21,6 +21,16 @@ class ShortsExporter
 
     public function export(Sequence $sequence): ExportResult
     {
+        try {
+            return $this->burn($sequence);
+        } finally {
+            Drawtext::cleanup();
+        }
+    }
+
+    private function burn(Sequence $sequence): ExportResult
+    {
+        FrameGuard::assertExportable($sequence);
         $this->clips->ensure($sequence);
         $sequence->load(['exhibit.hall.wing']);
         $shots = $sequence->shots()->with('cues')->get();

@@ -12,17 +12,26 @@ use App\Jobs\ExportShortsJob;
 use App\Jobs\GenerateShotJob;
 use App\Models\Character;
 use App\Models\Export;
+use App\Models\ScenePackSubmission;
 use App\Models\Sequence;
 use App\Models\Shot;
+use App\Video\FrameGuard;
 use App\Video\HouseStandard;
 use App\Video\ShortsSplitter;
 use App\Video\Stamp;
+use App\Workshop\AddScene;
+use App\Workshop\SceneInbox;
+use App\Workshop\ScenePack;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
+use Livewire\WithFileUploads;
 
 #[Layout('layouts.workshop')]
 class Workshop extends Component
 {
+    use WithFileUploads;
+
     public ?int $sequenceId = null;
 
     public ?int $selectedShotId = null;
@@ -46,6 +55,12 @@ class Workshop extends Component
     public string $duration = '4.0';
 
     public string $truthTag = 'documented';
+
+    public ?string $notice = null;
+
+    public ?TemporaryUploadedFile $frameUpload = null;
+
+    public ?TemporaryUploadedFile $packUpload = null;
 
     public function mount(): void
     {
@@ -95,9 +110,112 @@ class Workshop extends Component
     public function regenerate(): void
     {
         $shot = $this->persist();
+
+        if (! $shot->hasFrame()) {
+            $this->notice = FrameGuard::message($shot);
+
+            return;
+        }
+
+        $this->notice = null;
         $shot->snapshotVersion();
         $shot->update(['status' => ShotStatus::Queued]);
         GenerateShotJob::dispatch($shot->id);
+    }
+
+    public function addScene(AddScene $addScene): void
+    {
+        $sequence = $this->sequence();
+
+        if (! $sequence) {
+            return;
+        }
+
+        $this->fillFromShot($addScene->append($sequence));
+        $this->notice = null;
+        $this->showVersions = false;
+    }
+
+    public function insertAfter(AddScene $addScene): void
+    {
+        $sequence = $this->sequence();
+
+        if (! $sequence || ! $this->selectedShotId) {
+            return;
+        }
+
+        $this->fillFromShot($addScene->insertAfter($sequence, $this->findShot($this->selectedShotId)));
+        $this->notice = null;
+        $this->showVersions = false;
+    }
+
+    public function uploadFrame(): void
+    {
+        if (! $this->selectedShotId) {
+            return;
+        }
+
+        $this->validate([
+            'frameUpload' => 'required|image|max:10240',
+        ]);
+
+        $shot = $this->findShot($this->selectedShotId);
+        $path = $this->frameUpload->store('frames/'.$shot->sequence_id, 'public');
+        $shot->update([
+            'frame_path' => $path,
+            'clip_path' => null,
+            'status' => ShotStatus::Draft,
+        ]);
+        $this->frameUpload = null;
+        $this->notice = null;
+    }
+
+    public function importPack(AddScene $addScene): void
+    {
+        $this->validate([
+            'packUpload' => 'required|file|max:2048',
+        ]);
+
+        try {
+            $shots = ScenePack::load($this->packUpload->getRealPath())->import($addScene);
+        } catch (\InvalidArgumentException $exception) {
+            $this->notice = $exception->getMessage();
+
+            return;
+        }
+
+        $shot = $shots[array_key_last($shots)];
+        $this->sequenceId = $shot->sequence_id;
+        $this->fillFromShot($shot);
+        $this->packUpload = null;
+        $this->notice = 'Imported '.count($shots).' scene(s).';
+        $this->showVersions = false;
+    }
+
+    public function approvePack(int $submissionId, SceneInbox $inbox): void
+    {
+        $submission = ScenePackSubmission::query()->findOrFail($submissionId);
+
+        try {
+            $shots = $inbox->approve($submission);
+        } catch (\Throwable $exception) {
+            $this->notice = $exception->getMessage();
+
+            return;
+        }
+
+        $shot = $shots[array_key_last($shots)];
+        $this->sequenceId = $shot->sequence_id;
+        $this->fillFromShot($shot);
+        $this->notice = 'Approved '.$submission->filename.'.';
+        $this->showVersions = false;
+    }
+
+    public function rejectPack(int $submissionId, SceneInbox $inbox): void
+    {
+        $submission = ScenePackSubmission::query()->findOrFail($submissionId);
+        $inbox->reject($submission);
+        $this->notice = 'Rejected '.$submission->filename.'.';
     }
 
     public function restoreVersion(int $versionId): void
@@ -291,14 +409,28 @@ class Workshop extends Component
                 ? Export::query()->where('sequence_id', $sequence->id)->latest()->limit(6)->get()
                 : collect(),
             'models' => ['FLUX', 'Runway', 'Kling'],
+            'pendingPacks' => app(SceneInbox::class)->scan(),
         ]);
     }
 
     private function queue(ExportKind $kind, string $job): void
     {
-        if (! $this->sequenceId) {
+        $sequence = $this->sequence();
+
+        if (! $sequence) {
             return;
         }
+
+        try {
+            FrameGuard::assertExportable($sequence);
+        } catch (\RuntimeException $exception) {
+            $this->notice = $exception->getMessage();
+            $this->showExport = true;
+
+            return;
+        }
+
+        $this->notice = null;
 
         $export = Export::query()->create([
             'sequence_id' => $this->sequenceId,

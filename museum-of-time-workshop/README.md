@@ -70,6 +70,28 @@ Plaque cues are burned into the picture. Narration cues become a subtitle track.
 
 `FakeProvider` builds each shot with ffmpeg: a Ken Burns move when the shot has one frame, or a crossfade into the next shot's frame. `Runway` and `Kling` are registered and off. Enabling them still does not send HTTP. They throw until a real client exists.
 
+Plaque lines and the short stamp are written to temporary text files and drawn with `drawtext=textfile` and `expansion=none`, then those files are removed. A shot with no frame is refused for render and export.
+
+## Scenes
+
+`+ Add scene` appends a draft shot (empty frame, blank prompt, model FLUX, 4 seconds, truth tag invented). `Insert after` puts one after the selected shot and renumbers. Upload a frame from the inspector before rendering that shot.
+
+The same insert goes through `App\Workshop\AddScene` for the buttons, the command, and scene packs:
+
+```bash
+php artisan workshop:add-scene --exhibit=gala-arrest --after=3 --prompt="..." --duration=4 --truth=invented --frame=frames/ring.jpg --narration="..." --plaque="..."
+```
+
+The command prints the new shot as JSON. `--after` is a shot id when one matches, otherwise an order number. Omit it to append.
+
+A scene pack is a JSON file. Frame paths are relative to that file. See [docs/scene-pack.md](docs/scene-pack.md).
+
+```bash
+php artisan workshop:import-scenes path/to/pack.json
+```
+
+The editor's Import scenes button uses the same file. A pack dropped in the inbox (`WORKSHOP_INBOX`, default `storage/app/inbox`) shows up as pending. Approve adds the scenes. Reject leaves the sequence unchanged. Invalid JSON or a missing frame is reported and is not imported.
+
 ## Sections
 
 `config/sections.php` is the registry. Each section is a module under `app/Sections/<Name>` with its own `routes.php`, Livewire components, and a left-rail entry. Shared records are `Wing`, `Hall`, `Exhibit`, `Character`, and `Asset` (with a `TruthTag`). A `Sequence` belongs to an `Exhibit`.

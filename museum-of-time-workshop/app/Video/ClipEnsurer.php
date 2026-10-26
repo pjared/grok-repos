@@ -10,6 +10,8 @@ class ClipEnsurer
 {
     public function ensure(Sequence $sequence): void
     {
+        FrameGuard::assertExportable($sequence);
+
         foreach ($sequence->shots()->orderBy('order')->get() as $shot) {
             $path = $shot->clip_path ? Storage::disk('public')->path($shot->clip_path) : null;
 

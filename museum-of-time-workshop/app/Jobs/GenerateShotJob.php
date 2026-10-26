@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Enums\ShotStatus;
 use App\Models\Shot;
+use App\Video\FrameGuard;
 use App\Video\VideoProvider;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -24,6 +25,13 @@ class GenerateShotJob implements ShouldQueue
     public function handle(VideoProvider $provider): void
     {
         $shot = Shot::query()->findOrFail($this->shotId);
+
+        if (! $shot->hasFrame()) {
+            $shot->update(['status' => ShotStatus::Failed]);
+
+            throw new \RuntimeException(FrameGuard::message($shot));
+        }
+
         $shot->update(['status' => ShotStatus::Rendering]);
 
         $start = Storage::disk('public')->path((string) $shot->frame_path);

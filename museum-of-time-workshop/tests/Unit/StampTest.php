@@ -11,8 +11,15 @@ it('formats the house stamp', function () {
 
 it('puts that stamp on the burn-in filter', function () {
     $stamp = Stamp::text('Unit 14', 'Gala Arrest', 1, 4);
+    $filter = Drawtext::filter($stamp);
 
-    expect(Drawtext::filter($stamp))->toContain($stamp);
+    expect($filter)->toContain('textfile=')
+        ->and($filter)->toContain('expansion=none')
+        ->and(Drawtext::texts())->toContain($stamp)
+        ->and($filter)->not->toContain($stamp);
+
+    Drawtext::cleanup();
+    expect(Drawtext::files())->toBe([]);
 });
 
 it('warns when an episode is outside three to four minutes', function () {
