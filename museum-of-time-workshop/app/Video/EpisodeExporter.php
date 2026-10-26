@@ -67,7 +67,7 @@ class EpisodeExporter
                     }
                 }
 
-                if ($cue->type === CueType::Narration) {
+                if ($cue->type === CueType::Narration && trim((string) $cue->text) !== '') {
                     $subtitles[] = ['start' => $start, 'end' => $end, 'text' => $cue->text];
                 }
             }

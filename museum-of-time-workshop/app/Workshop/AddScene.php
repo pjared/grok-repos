@@ -54,11 +54,11 @@ class AddScene
                 'model' => (string) ($attributes['model'] ?? self::DEFAULT_MODEL),
                 'duration_s' => $this->duration($attributes['duration'] ?? $attributes['duration_s'] ?? self::DEFAULT_DURATION),
                 'truth_tag' => $this->tag($attributes['truth'] ?? $attributes['truth_tag'] ?? TruthTag::Invented),
-                'clip_path' => null,
-                'status' => ShotStatus::Draft,
+                'clip_path' => $attributes['clip_path'] ?? null,
+                'status' => filled($attributes['clip_path'] ?? null) ? ShotStatus::Ready : ShotStatus::Draft,
             ]);
 
-            $this->cue($shot, CueType::Narration, $attributes['narration'] ?? null, $attributes['voice'] ?? null);
+            $this->cue($shot, CueType::Narration, $attributes['narration'] ?? null, $attributes['voice'] ?? null, $attributes['narration_audio'] ?? null);
             $this->cue($shot, CueType::Plaque, $attributes['plaque'] ?? null, null);
 
             $this->renumber($sequence);
@@ -125,11 +125,12 @@ class AddScene
         return $tag;
     }
 
-    private function cue(Shot $shot, CueType $type, mixed $text, mixed $voice): void
+    private function cue(Shot $shot, CueType $type, mixed $text, mixed $voice, mixed $audio = null): void
     {
         $text = trim((string) ($text ?? ''));
+        $audio = is_string($audio) && $audio !== '' ? $audio : null;
 
-        if ($text === '') {
+        if ($text === '' && $audio === null) {
             return;
         }
 
@@ -137,8 +138,9 @@ class AddScene
             'shot_id' => $shot->id,
             'type' => $type,
             'offset_s' => 0,
-            'text' => $text,
+            'text' => $text !== '' ? $text : null,
             'voice' => $type === CueType::Narration ? ($voice !== null && $voice !== '' ? (string) $voice : null) : null,
+            'audio_path' => $type === CueType::Narration ? $audio : null,
         ]);
     }
 }

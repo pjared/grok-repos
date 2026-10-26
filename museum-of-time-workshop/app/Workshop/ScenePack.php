@@ -18,6 +18,10 @@ class ScenePack
         public readonly string $exhibit,
         public readonly array $scenes,
         public readonly string $directory,
+        public readonly ?string $title = null,
+        public readonly ?string $wing = null,
+        public readonly ?string $hall = null,
+        public readonly ?string $truth = null,
     ) {}
 
     public static function load(string $path): self
@@ -63,7 +67,15 @@ class ScenePack
             self::assertPlacement($scene, $number);
         }
 
-        return new self($exhibit, array_values($scenes), $directory);
+        return new self(
+            $exhibit,
+            array_values($scenes),
+            $directory,
+            self::text($data['title'] ?? null),
+            self::text($data['wing'] ?? null),
+            self::text($data['hall'] ?? null),
+            self::text($data['truth'] ?? null),
+        );
     }
 
     /**
@@ -75,15 +87,17 @@ class ScenePack
 
         try {
             return DB::transaction(function () use ($addScene, &$copied) {
-                $sequence = ExhibitSequences::find($this->exhibit);
+                $sequence = $this->sequence();
                 $created = [];
 
                 foreach ($this->scenes as $scene) {
                     $sequence->refresh();
                     $after = $this->after($sequence, $scene);
-                    $frame = $this->storeFrame($sequence, $scene['frame'] ?? null);
+                    $clip = $this->linkedMedia($scene['clip_path'] ?? null, 'clip');
+                    $audio = $this->linkedMedia($scene['narration_audio'] ?? null, 'audio');
+                    $frame = $this->framePath($sequence, $scene);
 
-                    if (is_string($frame)) {
+                    if (is_string($frame) && ! str_starts_with($frame, 'media/')) {
                         $copied[] = $frame;
                     }
 
@@ -91,10 +105,12 @@ class ScenePack
                         'title' => $scene['title'] ?? null,
                         'prompt' => $scene['prompt'] ?? '',
                         'duration' => $scene['duration'] ?? AddScene::DEFAULT_DURATION,
-                        'truth' => $scene['truth'] ?? 'invented',
+                        'truth' => $scene['truth'] ?? $this->truth ?? 'invented',
                         'model' => $scene['model'] ?? AddScene::DEFAULT_MODEL,
                         'frame_path' => $frame,
+                        'clip_path' => $clip,
                         'narration' => $scene['narration'] ?? null,
+                        'narration_audio' => $audio,
                         'voice' => $scene['voice'] ?? null,
                         'plaque' => $scene['plaque'] ?? null,
                     ];
@@ -111,6 +127,83 @@ class ScenePack
 
             throw $exception;
         }
+    }
+
+    private function sequence(): Sequence
+    {
+        try {
+            return ExhibitSequences::find($this->exhibit);
+        } catch (\InvalidArgumentException $exception) {
+            if ($this->title === null || $this->wing === null) {
+                throw $exception;
+            }
+
+            return ExhibitSequences::provision(
+                $this->exhibit,
+                $this->title,
+                $this->wing,
+                $this->hall ?: 'Main Hall',
+                $this->truth ?: 'legend',
+            );
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $scene
+     */
+    private function framePath(Sequence $sequence, array $scene): ?string
+    {
+        $linked = $this->linkedMedia($scene['frame_path'] ?? null, 'frame');
+
+        if ($linked !== null) {
+            return $linked;
+        }
+
+        return $this->storeFrame($sequence, $scene['frame'] ?? null);
+    }
+
+    private function linkedMedia(mixed $relative, string $label): ?string
+    {
+        if ($relative === null || $relative === '') {
+            return null;
+        }
+
+        if (! is_string($relative)) {
+            throw new \InvalidArgumentException("Scene {$label} path must be a string.");
+        }
+
+        $normalized = str_replace('\\', '/', $relative);
+
+        if (! str_starts_with($normalized, 'media/') || str_contains($normalized, '..')) {
+            throw new \InvalidArgumentException("Scene {$label} \"{$relative}\" must stay inside the media library.");
+        }
+
+        $root = realpath((string) config('workshop.media_root'));
+        $inside = substr($normalized, strlen('media/'));
+
+        if ($root === false || $inside === '') {
+            throw new \InvalidArgumentException("Scene {$label} \"{$relative}\" must stay inside the media library.");
+        }
+
+        $candidate = $root.DIRECTORY_SEPARATOR.str_replace('/', DIRECTORY_SEPARATOR, $inside);
+        $real = realpath($candidate);
+
+        if ($real === false || ! is_file($real) || ! str_starts_with($real, $root.DIRECTORY_SEPARATOR)) {
+            throw new \InvalidArgumentException("Scene {$label} \"{$relative}\" must stay inside the media library.");
+        }
+
+        return $normalized;
+    }
+
+    private static function text(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $value = trim($value);
+
+        return $value === '' ? null : $value;
     }
 
     /**

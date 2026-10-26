@@ -13,9 +13,14 @@ class SubtitleBuilder
         $index = 1;
 
         foreach ($cues as $cue) {
+            $text = trim(str_replace(["\r", "\n"], ' ', (string) ($cue['text'] ?? '')));
+
+            if ($text === '') {
+                continue;
+            }
+
             $start = self::timestamp((float) $cue['start']);
             $end = self::timestamp(max((float) $cue['start'] + 0.2, (float) $cue['end']));
-            $text = str_replace(["\r", "\n"], ' ', $cue['text']);
             $lines[] = $index."\n".$start.' --> '.$end."\n".$text."\n";
             $index++;
         }

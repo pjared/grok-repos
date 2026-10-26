@@ -178,7 +178,7 @@ class ShortsExporter
 
         foreach ($shots as $shot) {
             foreach ($shot->cues as $cue) {
-                if ($cue->type !== CueType::Narration) {
+                if ($cue->type !== CueType::Narration || trim((string) $cue->text) === '') {
                     continue;
                 }
 

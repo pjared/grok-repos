@@ -37,6 +37,11 @@ A scene pack is a JSON file, or a `.zip` of that JSON plus its frames. Frame pat
 | `narration` | no | Narration cue on the new shot. |
 | `voice` | no | Voice label for the narration cue. |
 | `plaque` | no | Plaque cue on the new shot. |
+| `clip_path` | no | Existing clip on the public disk, as `media/...` inside `MEDIA_ROOT`. The file is not copied. |
+| `frame_path` | no | Existing preview image on the public disk, as `media/...`. |
+| `narration_audio` | no | Narration audio on the public disk, as `media/...`, stored on the narration cue. |
+
+`php artisan workshop:import-exhibit <slug>` reads `museum-of-time/exhibits/<slug>/` and matching files under that exhibit's own `exhibits/<slug>/`, `assets/<kind>/<slug>/`, and `previews/<slug>/` folders in `MEDIA_ROOT`, then leaves that pack pending in the inbox. A shot with no matching clip stays draft. A pack can include `title`, `wing`, `hall`, and `truth` so approval creates the exhibit when it is not in the workshop yet. The scenes it writes use `after_id` when that exhibit already has a last shot, and `after_order` on every scene after the first. It does not write `after`.
 
 `after` is not accepted. Use `after_id` or `after_order`.
 
