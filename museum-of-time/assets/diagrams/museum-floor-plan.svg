@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 640" width="960" height="640" role="img" aria-label="Museum of Time floor plan">
+  <defs>
+    <style>
+      .wall { fill: none; stroke: #2a2a2a; stroke-width: 3; }
+      .room { fill: #f4f1ea; stroke: #2a2a2a; stroke-width: 2; }
+      .travelers { fill: #ebe8e0; }
+      .books { fill: #e8e0d6; }
+      .entrance { fill: #1a1a1a; }
+      .label { font-family: Georgia, "Times New Roman", serif; fill: #2a2a2a; }
+      .light { fill: #f7f4ec; }
+      .muted { fill: #666; font-size: 13px; }
+      .title { font-size: 22px; font-weight: 600; }
+      .door { font-size: 12px; }
+      .ped { fill: #2a2a2a; }
+      .ped-label { font-size: 12px; }
+      .small { font-size: 14px; }
+    </style>
+  </defs>
+
+  <rect width="960" height="640" fill="#d9d3c8"/>
+
+  <text x="480" y="36" text-anchor="middle" class="label title">Museum of Time — floor plan</text>
+  <text x="480" y="58" text-anchor="middle" class="label muted">Update with layout.md when exhibits move</text>
+
+  <!-- Entrance hall -->
+  <rect x="380" y="480" width="200" height="120" class="entrance"/>
+  <text x="480" y="530" text-anchor="middle" fill="#f4f1ea" class="label small">ENTRANCE</text>
+  <text x="480" y="552" text-anchor="middle" fill="#bdb8ae" class="label" style="font-size:11px">F1 dolly → lit pedestal</text>
+  <!-- Lit pedestal in entrance -->
+  <circle cx="480" cy="500" r="8" fill="#f0e6c8"/>
+  <circle cx="480" cy="500" r="18" fill="none" stroke="#f0e6c8" stroke-width="1" opacity="0.5"/>
+
+  <!-- Arrow up from entrance -->
+  <path d="M480 480 L480 440" stroke="#2a2a2a" stroke-width="2" marker-end="url(#arr)"/>
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#2a2a2a"/>
+    </marker>
+  </defs>
+
+  <!-- Lobby / door landing -->
+  <rect x="300" y="400" width="360" height="50" class="room"/>
+  <text x="480" y="430" text-anchor="middle" class="label small">choose a door</text>
+
+  <!-- Travelers wing (left) -->
+  <rect x="40" y="80" width="400" height="300" class="room travelers"/>
+  <text x="240" y="110" text-anchor="middle" class="label" style="font-size:16px">Wheel of Travelers</text>
+  <text x="240" y="132" text-anchor="middle" class="label door">Parable. Invented exhibits about people</text>
+  <text x="240" y="148" text-anchor="middle" class="label door">who changed a timeline.</text>
+  <text x="240" y="170" text-anchor="middle" class="label muted">clean museum light</text>
+
+  <!-- Pedestals T1 T2 -->
+  <rect x="100" y="210" width="120" height="90" rx="4" fill="#f7f4ec" stroke="#2a2a2a"/>
+  <circle cx="160" cy="245" r="10" class="ped"/>
+  <text x="160" y="275" text-anchor="middle" class="label ped-label">T1 Iole</text>
+  <text x="160" y="290" text-anchor="middle" class="label muted" style="font-size:10px">Uncopied Canvas</text>
+
+  <rect x="260" y="210" width="120" height="90" rx="4" fill="#f7f4ec" stroke="#2a2a2a"/>
+  <circle cx="320" cy="245" r="10" class="ped"/>
+  <text x="320" y="275" text-anchor="middle" class="label ped-label">T2 Already Seen</text>
+  <text x="320" y="290" text-anchor="middle" class="label muted" style="font-size:10px">postcard frame</text>
+
+  <text x="240" y="350" text-anchor="middle" class="label muted">order: T1 → T2</text>
+
+  <!-- Surviving Books wing (right) -->
+  <rect x="520" y="80" width="400" height="300" class="room books"/>
+  <text x="720" y="110" text-anchor="middle" class="label" style="font-size:16px">Surviving Books</text>
+  <text x="720" y="132" text-anchor="middle" class="label door">Sourced retelling. Myth and history</text>
+  <text x="720" y="148" text-anchor="middle" class="label door">kept alive after the fires.</text>
+  <text x="720" y="170" text-anchor="middle" class="label muted">firelight · paper texture</text>
+
+  <!-- Pedestal B1 -->
+  <rect x="560" y="200" width="140" height="80" rx="4" fill="#f0e6d8" stroke="#2a2a2a"/>
+  <circle cx="630" cy="230" r="9" class="ped"/>
+  <text x="630" y="258" text-anchor="middle" class="label ped-label">B1 Popol Vuh</text>
+  <text x="630" y="272" text-anchor="middle" class="label muted" style="font-size:10px">Part 1</text>
+
+  <!-- Pedestal B2 -->
+  <rect x="720" y="200" width="160" height="80" rx="4" fill="#f0e6d8" stroke="#2a2a2a"/>
+  <circle cx="800" cy="230" r="9" class="ped"/>
+  <text x="800" y="258" text-anchor="middle" class="label ped-label">B2 What the Fire Took</text>
+  <text x="800" y="272" text-anchor="middle" class="label muted" style="font-size:10px">Alexandria</text>
+
+  <text x="720" y="350" text-anchor="middle" class="label muted">order: B1 → B2</text>
+
+  <!-- Doors from lobby -->
+  <rect x="200" y="380" width="80" height="20" fill="#2a2a2a"/>
+  <text x="240" y="394" text-anchor="middle" fill="#f4f1ea" style="font-size:10px;font-family:Georgia,serif">TRAVELERS</text>
+  <rect x="680" y="380" width="80" height="20" fill="#2a2a2a"/>
+  <text x="720" y="394" text-anchor="middle" fill="#f4f1ea" style="font-size:10px;font-family:Georgia,serif">BOOKS</text>
+
+  <!-- Paths from lobby to wings -->
+  <path d="M360 400 L240 380" stroke="#2a2a2a" stroke-width="1.5" fill="none"/>
+  <path d="M600 400 L720 380" stroke="#2a2a2a" stroke-width="1.5" fill="none"/>
+
+  <!-- Social key -->
+  <text x="480" y="620" text-anchor="middle" class="label muted">Social: Museum of Time · [Wing] · [Exhibit]</text>
+</svg>

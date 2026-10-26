@@ -1,0 +1,4 @@
+# Rendered media stays out of the public repo.
+museum-of-time/**/*.mp4
+*.mp3
+*.mov

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" font-family="Helvetica,Arial" font-size="15">
+<rect width="1400" height="900" fill="#f4f4f4"/>
+<rect width="1400" height="50" fill="#222"/><text x="20" y="32" fill="#fff" font-size="20">Museum of Time · Timeline</text>
+<text x="1000" y="32" fill="#bbb">Master timeline | Detail cuts | Save</text>
+<rect y="50" width="220" height="850" fill="#e2e2e2"/>
+<text x="16" y="85" font-weight="bold">Halls</text>
+<text x="16" y="115">Salt Lake 2000s</text><text x="16" y="140">Salt Lake 2020s (storage front)</text><text x="16" y="165">Time travel invented</text><text x="16" y="190">Far-future time war</text><text x="16" y="215">End of Time</text><text x="16" y="240">WWII front</text>
+<text x="16" y="265" fill="#aaa">Mesoamerica (future)</text>
+<text x="16" y="310" font-weight="bold">Filters</text><text x="16" y="338" fill="#2a8a2a">[x] Green side</text><text x="16" y="363" fill="#c22">[x] Red side</text><text x="16" y="388">[x] documented</text><text x="16" y="413">[x] reconstructed</text><text x="16" y="438">[x] invented</text><text x="16" y="463" fill="#aaa">[ ] show on-hold</text>
+<text x="240" y="85" font-weight="bold">MASTER TIMELINE (lanes by side)</text>
+<rect x="240" y="95" width="900" height="45" fill="#e6f4e6"/><text x="248" y="122" fill="#2a8a2a" font-size="12">GREEN</text>
+<rect x="240" y="140" width="900" height="45" fill="#f8e4e4"/><text x="248" y="167" fill="#c22" font-size="12">RED</text>
+<line x1="300" y1="140" x2="1135" y2="140" stroke="#333" stroke-width="3"/>
+<g stroke-dasharray="5 4"><rect x="305" y="113" width="100" height="54" fill="#eee" stroke="#bbb"/></g>
+<text x="313" y="137" fill="#aaa" font-size="13">Triple Alliance</text><text x="313" y="155" fill="#aaa" font-size="11">future</text>
+<g fill="#fff" stroke="#333"><rect x="420" y="113" width="125" height="54"/><rect x="560" y="113" width="125" height="54"/><rect x="700" y="113" width="135" height="54"/><rect x="850" y="113" width="140" height="54"/><rect x="1005" y="113" width="125" height="54"/></g>
+<text x="428" y="137" font-size="14">SLC deal 2000s</text><text x="428" y="155" font-size="11" fill="#c22">governor · red</text>
+<text x="568" y="137" font-size="14">SLC front 2020s</text><text x="568" y="155" font-size="11">storage units</text>
+<text x="708" y="137" font-size="14">Time travel</text><text x="708" y="155" font-size="11">curtain drops</text>
+<text x="858" y="137" font-size="14">Time war</text><text x="858" y="155" font-size="11">civil war, green/red</text>
+<text x="1013" y="137" font-size="14">End of Time</text>
+<path d="M 920 170 C 920 225, 490 225, 490 170" fill="none" stroke="#c22" stroke-width="2" stroke-dasharray="8 5"/>
+<text x="560" y="222" fill="#c22" font-size="13">sent back to die (Looper wire runs backward)</text>
+<path d="M 780 110 C 780 75, 620 75, 620 110" fill="none" stroke="#2a8a2a" stroke-width="2" stroke-dasharray="8 5"/>
+<text x="640" y="72" fill="#2a8a2a" font-size="12">detective jumps back</text>
+<text x="240" y="265" font-weight="bold">DETAIL CUT: The Salt Lake Murder (time detective)</text>
+<rect x="240" y="280" width="900" height="590" fill="#fff" stroke="#999"/>
+<g stroke="#333" fill="#fafafa"><rect x="265" y="310" width="190" height="150"/><rect x="510" y="310" width="190" height="150"/><rect x="755" y="310" width="190" height="150"/><rect x="755" y="530" width="190" height="150"/><rect x="510" y="530" width="190" height="150"/></g>
+<g stroke="#333" fill="none" stroke-width="2"><path d="M455 385 L510 385"/><path d="M700 385 L755 385"/><path d="M850 460 L850 530"/><path d="M755 605 L700 605"/></g>
+<g font-size="13">
+<text x="275" y="332" font-weight="bold">Body in a storage unit</text><rect x="275" y="340" width="170" height="55" fill="#ddd"/><text x="315" y="372">[thumbnail]</text><text x="275" y="415">"narration line..."</text><text x="275" y="440" fill="#c22">Red · invented victim</text>
+<text x="520" y="332" font-weight="bold">Detective arrives</text><rect x="520" y="340" width="170" height="55" fill="#ddd"/><text x="560" y="372">[thumbnail]</text><text x="520" y="415">"narration line..."</text><text x="520" y="440" fill="#2a8a2a">Green? · invented</text>
+<text x="765" y="332" font-weight="bold">The front is found</text><rect x="765" y="340" width="170" height="55" fill="#ddd"/><text x="805" y="372">[thumbnail]</text><text x="765" y="415">"governor's operation"</text><text x="765" y="440" fill="#c22">Red · invented</text>
+<text x="765" y="552" font-weight="bold">More bodies</text><rect x="765" y="560" width="170" height="55" fill="#ddd"/><text x="805" y="592">[thumbnail]</text><text x="765" y="635">"narration line..."</text><text x="765" y="660" fill="#c22">Red · invented</text>
+<text x="520" y="552" font-weight="bold">Drafted into the war</text><rect x="520" y="560" width="170" height="55" fill="#ddd"/><text x="560" y="592">[thumbnail]</text><text x="520" y="635">"narration line..."</text><text x="520" y="660">side: VOTE</text>
+<text x="265" y="730" fill="#888">Open vote: which side does the detective start on?</text>
+<text x="265" y="755" fill="#aaa">On hold: Day in Meso cut (greyed, future)</text>
+</g>
+<rect x="1160" y="70" width="225" height="800" fill="#e8e8e8" stroke="#ccc"/>
+<g font-size="14"><text x="1175" y="98" font-weight="bold">Selected box</text><text x="1175" y="128">Title</text><rect x="1175" y="136" width="195" height="26" fill="#fff" stroke="#bbb"/>
+<text x="1175" y="185">Era / hall</text><rect x="1175" y="193" width="195" height="26" fill="#fff" stroke="#bbb"/>
+<text x="1175" y="245">Side: Green / Red / Vote</text><text x="1175" y="275">Status: documented /</text><text x="1175" y="293">reconstructed / invented</text>
+<text x="1175" y="320">On hold: yes / no</text>
+<text x="1175" y="350">Thumbnail</text><rect x="1175" y="358" width="195" height="100" fill="#ddd"/>
+<text x="1175" y="485">Narration</text><rect x="1175" y="493" width="195" height="120" fill="#fff" stroke="#bbb"/>
+<text x="1170" y="640" font-size="12">Edited by: the director / bots</text></g>
+</svg>

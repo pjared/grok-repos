@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="360">
+<rect width="600" height="360" rx="28" fill="#141018"/>
+<rect x="12" y="12" width="576" height="336" rx="20" fill="none" stroke="#c9a24a" stroke-width="4"/>
+<circle cx="130" cy="180" r="80" fill="none" stroke="#c9a24a" stroke-width="5"/>
+<line x1="130" y1="180" x2="130" y2="125" stroke="#c9a24a" stroke-width="6"/>
+<line x1="130" y1="180" x2="170" y2="200" stroke="#c9a24a" stroke-width="6"/>
+<text x="240" y="110" fill="#c9a24a" font-family="serif" font-size="22" letter-spacing="4">MUSEUM OF TIME</text>
+<text x="240" y="175" fill="#f3ead6" font-family="serif" font-size="38">Museum Curator</text>
+<text x="240" y="220" fill="#b9ad96" font-family="serif" font-size="20" font-style="italic">Keeper of the halls</text>
+<text x="240" y="290" fill="#c9a24a" font-family="serif" font-size="18">Employee No. 2 · At the End of Time</text>
+</svg>

@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" font-family="Inter,Helvetica,Arial" font-size="13" fill="#e6e6ea">
+<defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#7c5cff"/><stop offset="1" stop-color="#ff5c8a"/></linearGradient></defs>
+<rect width="1440" height="900" fill="#0f1014"/>
+<rect x="0" y="0" width="1440" height="52" fill="#16171d"/>
+<circle cx="28" cy="26" r="10" fill="url(#g)"/><text x="46" y="31" font-weight="600" font-size="15">Workshop</text>
+<rect x="150" y="14" width="260" height="24" rx="12" fill="#22232b"/><text x="164" y="30" fill="#9a9aa6">Unit 14  /  Gala Arrest</text>
+<rect x="560" y="14" width="320" height="24" rx="12" fill="#22232b"/><text x="576" y="30" fill="#6c6c78">⌘K  Search shots, characters, plaques</text>
+<circle cx="1180" cy="26" r="12" fill="#3a3b46"/><circle cx="1200" cy="26" r="12" fill="#5a4bb5"/><circle cx="1220" cy="26" r="12" fill="#b54b6e"/>
+<rect x="1250" y="12" width="176" height="28" rx="8" fill="url(#g)"/><text x="1296" y="31" font-weight="600" fill="#fff">Export </text>
+<rect x="12" y="64" width="64" height="520" rx="14" fill="#16171d"/>
+<rect x="32" y="88" width="24" height="24" rx="6" fill="#2d2e38"/><rect x="32" y="134" width="24" height="24" rx="6" fill="#5a4bb5"/><rect x="32" y="180" width="24" height="24" rx="6" fill="#2d2e38"/><rect x="32" y="226" width="24" height="24" rx="6" fill="#2d2e38"/><g><text x="33" y="104"></text><text x="33" y="150" fill="#fff"></text><text x="33" y="196"></text><text x="33" y="242"></text></g>
+<rect x="86" y="64" width="240" height="520" rx="14" fill="#16171d"/>
+<text x="102" y="92" font-weight="600">Characters</text><text x="290" y="92" fill="#7c5cff">+</text>
+<rect x="102" y="106" width="208" height="120" rx="10" fill="#22232b"/><rect x="102" y="106" width="208" height="84" rx="10" fill="#2d2e38"/><text x="114" y="212">Tung</text><rect x="246" y="198" width="54" height="20" rx="10" fill="#2a2450"/><text x="254" y="212" fill="#a993ff" font-size="11">ref</text>
+<rect x="102" y="236" width="208" height="56" rx="10" fill="#22232b"/><text x="114" y="268">White-tux man</text>
+<rect x="102" y="302" width="208" height="56" rx="10" fill="#22232b"/><text x="114" y="334">Tycoon's wife</text>
+<text x="102" y="392" font-weight="600">Truth tags</text>
+<rect x="102" y="404" width="96" height="24" rx="12" fill="#163a2c"/><text x="114" y="420" fill="#5ee0a0" font-size="12">documented</text>
+<rect x="204" y="404" width="62" height="24" rx="12" fill="#3a3216"/><text x="214" y="420" fill="#e0c25e" font-size="12">legend</text>
+<rect x="102" y="434" width="74" height="24" rx="12" fill="#3a1630"/><text x="113" y="450" fill="#ff7ab8" font-size="12">invented</text>
+<rect x="336" y="64" width="728" height="420" rx="14" fill="#000"/>
+<rect x="352" y="80" width="90" height="24" rx="12" fill="#22232b" opacity=".9"/><text x="364" y="96" font-size="12">16:9 · 9:16</text>
+<text x="640" y="280" fill="#555">Preview</text>
+<rect x="336" y="494" width="728" height="90" rx="14" fill="#16171d"/>
+<circle cx="372" cy="539" r="18" fill="#fff"/><text x="366" y="545" fill="#000" font-size="16">▶</text>
+<text x="404" y="535" font-weight="600">00:41 / 03:20</text><text x="404" y="555" fill="#8a8a96" font-size="12">Museum of Time · Unit 14 · Gala Arrest · Short 2 of 4</text>
+<rect x="760" y="533" width="280" height="6" rx="3" fill="#2d2e38"/><rect x="760" y="533" width="60" height="6" rx="3" fill="url(#g)"/>
+<rect x="1074" y="64" width="354" height="520" rx="14" fill="#16171d"/>
+<text x="1092" y="92" font-weight="600" font-size="15">Shot 5 · Doors slam</text><rect x="1350" y="78" width="62" height="22" rx="11" fill="#3a1630"/><text x="1358" y="93" fill="#ff7ab8" font-size="11">invented</text>
+<rect x="1092" y="108" width="318" height="140" rx="10" fill="#22232b"/>
+<text x="1092" y="272" fill="#8a8a96" font-size="12">PROMPT</text>
+<rect x="1092" y="280" width="318" height="76" rx="10" fill="#0f1014" stroke="#2d2e38"/><text x="1104" y="302" fill="#b5b5c0">Tung strikes table with bat…</text>
+<text x="1092" y="382" fill="#8a8a96" font-size="12">MODEL</text><rect x="1092" y="390" width="150" height="32" rx="8" fill="#22232b"/><text x="1104" y="411">FLUX </text>
+<text x="1258" y="382" fill="#8a8a96" font-size="12">DURATION</text><rect x="1258" y="390" width="152" height="32" rx="8" fill="#22232b"/><text x="1270" y="411">4.0 s</text>
+<rect x="1092" y="440" width="318" height="40" rx="10" fill="url(#g)"/><text x="1200" y="465" font-weight="600" fill="#fff">Regenerate shot</text>
+<rect x="1092" y="490" width="318" height="36" rx="10" fill="#22232b"/><text x="1196" y="513" fill="#b5b5c0">Version history (3)</text>
+<rect x="12" y="596" width="1416" height="292" rx="14" fill="#16171d"/>
+<text x="30" y="624" font-weight="600">Timeline</text>
+<g fill="#8a8a96" font-size="12"><text x="30" y="664">Shots</text><text x="30" y="730">Narration</text><text x="30" y="786">Plaque</text><text x="30" y="846">Shorts</text></g>
+<line x1="818" y1="606" x2="818" y2="878" stroke="#ff5c8a" stroke-width="2"/>
+<g><rect x="120" y="638" width="196" height="48" rx="8" fill="#2a2450"/><rect x="322" y="638" width="196" height="48" rx="8" fill="#2a2450"/><rect x="524" y="638" width="196" height="48" rx="8" fill="#2a2450"/><rect x="726" y="638" width="196" height="48" rx="8" fill="#2a2450"/><rect x="928" y="638" width="196" height="48" rx="8" fill="#4a2450" stroke="#ff5c8a" stroke-width="2"/><rect x="1130" y="638" width="196" height="48" rx="8" fill="#2a2450"/></g>
+<g font-size="12"><text x="132" y="667">1 · Gala</text><text x="334" y="667">2 · Empty setting</text><text x="536" y="667">3 · The pearl</text><text x="738" y="667">4 · The glance</text><text x="940" y="667">5 · Doors slam</text><text x="1142" y="667">6 · Still toasting</text></g>
+<rect x="120" y="712" width="600" height="30" rx="8" fill="#163a2c"/><text x="132" y="732" fill="#5ee0a0" font-size="12">VO · MoT Docent 3</text>
+<rect x="726" y="712" width="600" height="30" rx="8" fill="#163a2c"/>
+<rect x="1130" y="768" width="196" height="30" rx="8" fill="#3a3216"/><text x="1140" y="788" fill="#e0c25e" font-size="11">"Arrested in 1923 for a murder…"</text>
+<g fill="#22232b"><rect x="120" y="828" width="296" height="30" rx="8"/><rect x="422" y="828" width="296" height="30" rx="8" fill="#2d2e38" stroke="#7c5cff"/><rect x="724" y="828" width="296" height="30" rx="8"/><rect x="1026" y="828" width="300" height="30" rx="8"/></g>
+<g font-size="12" fill="#b5b5c0"><text x="132" y="848">Short 1 of 4 · 52s</text><text x="434" y="848">Short 2 of 4</text><text x="736" y="848">Short 3 of 4</text><text x="1038" y="848">Short 4 of 4</text></g>
+</svg>
