@@ -2,6 +2,8 @@
 
 namespace Tests;
 
+use App\Video\Drawtext;
+use App\Workshop\SceneInbox;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 
 abstract class TestCase extends BaseTestCase
@@ -11,5 +13,7 @@ abstract class TestCase extends BaseTestCase
         parent::setUp();
 
         $this->withoutVite();
+        Drawtext::useDirectory(null);
+        SceneInbox::forgetScanCache();
     }
 }

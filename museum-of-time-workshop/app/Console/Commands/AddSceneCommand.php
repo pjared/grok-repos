@@ -16,7 +16,8 @@ class AddSceneCommand extends Command
 {
     protected $signature = 'workshop:add-scene
         {--exhibit= : Exhibit slug or id}
-        {--after= : Shot id on that sequence, or its order number}
+        {--after-id= : Shot id to insert after}
+        {--after-order= : Shot order to insert after}
         {--prompt= : Prompt for the new scene}
         {--duration=4 : Duration in seconds}
         {--truth=invented : documented, legend, or invented}
@@ -39,10 +40,10 @@ class AddSceneCommand extends Command
                 'plaque' => $this->option('plaque'),
             ];
 
-            $after = $this->option('after');
-            $shot = ($after === null || $after === '')
-                ? $addScene->append($sequence, $attributes)
-                : $addScene->insertAfter($sequence, $this->after($sequence, (string) $after), $attributes);
+            $after = $this->after($sequence);
+            $shot = $after
+                ? $addScene->insertAfter($sequence, $after, $attributes)
+                : $addScene->append($sequence, $attributes);
         } catch (\InvalidArgumentException $exception) {
             $this->error($exception->getMessage());
 
@@ -78,27 +79,55 @@ class AddSceneCommand extends Command
         return $relative;
     }
 
-    private function after(Sequence $sequence, string $after): Shot
+    private function after(Sequence $sequence): ?Shot
     {
-        if (! ctype_digit($after)) {
-            throw new \InvalidArgumentException('Pass --after as a shot id or order number.');
+        $id = $this->blankToNull($this->option('after-id'));
+        $order = $this->blankToNull($this->option('after-order'));
+        $hasId = $id !== null;
+        $hasOrder = $order !== null;
+
+        if ($hasId && $hasOrder) {
+            throw new \InvalidArgumentException('Pass only one of --after-id or --after-order.');
         }
 
-        $needle = (int) $after;
-        $shots = $sequence->shots()->get();
-        $byId = $shots->firstWhere('id', $needle);
-
-        if ($byId) {
-            return $byId;
+        if (! $hasId && ! $hasOrder) {
+            return null;
         }
 
-        $byOrder = $shots->first(fn (Shot $shot) => (int) $shot->order === $needle);
+        if ($hasId) {
+            if (! ctype_digit($id)) {
+                throw new \InvalidArgumentException('Pass --after-id as a shot id.');
+            }
 
-        if ($byOrder) {
-            return $byOrder;
+            $shot = $sequence->shots()->whereKey((int) $id)->first();
+
+            if (! $shot) {
+                throw new \InvalidArgumentException("No shot id {$id} on this sequence to insert after.");
+            }
+
+            return $shot;
         }
 
-        throw new \InvalidArgumentException("No shot {$after} on this sequence to insert after.");
+        if (! ctype_digit($order)) {
+            throw new \InvalidArgumentException('Pass --after-order as an order number.');
+        }
+
+        $shot = $sequence->shots()->get()->first(fn (Shot $candidate) => (int) $candidate->order === (int) $order);
+
+        if (! $shot) {
+            throw new \InvalidArgumentException("No shot at order {$order} on this sequence to insert after.");
+        }
+
+        return $shot;
+    }
+
+    private function blankToNull(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return (string) $value;
     }
 
     /**

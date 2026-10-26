@@ -5,6 +5,7 @@ namespace App\Sections\Editor\Livewire;
 use App\Enums\CueType;
 use App\Enums\ExportKind;
 use App\Enums\ExportStatus;
+use App\Enums\ScenePackStatus;
 use App\Enums\ShotStatus;
 use App\Enums\TruthTag;
 use App\Jobs\ExportEpisodeJob;
@@ -21,7 +22,7 @@ use App\Video\ShortsSplitter;
 use App\Video\Stamp;
 use App\Workshop\AddScene;
 use App\Workshop\SceneInbox;
-use App\Workshop\ScenePack;
+use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
@@ -170,26 +171,33 @@ class Workshop extends Component
         $this->notice = null;
     }
 
-    public function importPack(AddScene $addScene): void
+    public function importPack(SceneInbox $inbox): void
     {
-        $this->validate([
-            'packUpload' => 'required|file|max:2048',
-        ]);
-
         try {
-            $shots = ScenePack::load($this->packUpload->getRealPath())->import($addScene);
-        } catch (\InvalidArgumentException $exception) {
-            $this->notice = $exception->getMessage();
+            $this->validate([
+                'packUpload' => 'required|file|mimes:zip|max:51200',
+            ]);
 
-            return;
+            $submission = $inbox->receive(
+                $this->packUpload->getRealPath(),
+                $this->packUpload->getClientOriginalName(),
+            );
+            $this->packUpload = null;
+
+            if ($submission->status === ScenePackStatus::Invalid) {
+                $this->notice = $submission->error ?: 'Scene pack could not be imported.';
+
+                return;
+            }
+
+            $this->notice = $submission->filename.' is waiting for approval.';
+        } catch (ValidationException $exception) {
+            $this->notice = $exception->validator->errors()->first() ?: 'Scene pack could not be imported.';
+        } catch (\Throwable $exception) {
+            $this->notice = $exception->getMessage() !== ''
+                ? $exception->getMessage()
+                : 'Scene pack could not be imported.';
         }
-
-        $shot = $shots[array_key_last($shots)];
-        $this->sequenceId = $shot->sequence_id;
-        $this->fillFromShot($shot);
-        $this->packUpload = null;
-        $this->notice = 'Imported '.count($shots).' scene(s).';
-        $this->showVersions = false;
     }
 
     public function approvePack(int $submissionId, SceneInbox $inbox): void

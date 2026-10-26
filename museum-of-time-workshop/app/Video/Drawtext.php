@@ -10,6 +10,8 @@ class Drawtext
     /** @var list<string> */
     private static array $texts = [];
 
+    private static ?string $directory = null;
+
     public static function filter(string $text, array $options = []): string
     {
         $size = $options['size'] ?? 28;
@@ -17,7 +19,7 @@ class Drawtext
         $font = self::escapePath(Fonts::path());
         $file = self::escapePath(self::write($text));
 
-        $filter = "drawtext=fontfile='{$font}':textfile='{$file}':expansion=none:fontsize={$size}:fontcolor=white:box=1:boxcolor=0x0f1014@0.72:boxborderw=12:x=(w-text_w)/2:y={$y}";
+        $filter = "drawtext=fontfile={$font}:textfile={$file}:expansion=none:fontsize={$size}:fontcolor=white:box=1:boxcolor=0x0f1014@0.72:boxborderw=12:x=(w-text_w)/2:y={$y}";
 
         if (isset($options['enable'])) {
             $filter .= ":enable='{$options['enable']}'";
@@ -66,20 +68,41 @@ class Drawtext
         self::$texts = [];
     }
 
+    public static function useDirectory(?string $directory): void
+    {
+        self::$directory = $directory;
+    }
+
+    /**
+     * Quote a path so it survives both ffmpeg filter-graph parsing and drawtext's
+     * own option parser. An apostrophe inside one pair of quotes ends the quote.
+     */
     public static function escapePath(string $path): string
     {
         $path = str_replace('\\', '/', $path);
+        $quoted = "'".str_replace("'", "'\\''", $path)."'";
 
         return str_replace(
-            ['\\', "'", ':', ',', '[', ']'],
-            ['\\\\', "\\'", '\\:', '\\,', '\\[', '\\]'],
-            $path,
+            ['\\', "'", ',', '[', ']', ';'],
+            ['\\\\', "\\'", '\\,', '\\[', '\\]', '\\;'],
+            $quoted,
         );
+    }
+
+    private static function directory(): string
+    {
+        $directory = self::$directory ?? storage_path('app/drawtext');
+
+        if (! is_dir($directory) && ! mkdir($directory, 0775, true) && ! is_dir($directory)) {
+            throw new \RuntimeException('Could not write drawtext text.');
+        }
+
+        return $directory;
     }
 
     private static function write(string $text): string
     {
-        $path = tempnam(sys_get_temp_dir(), 'mot-drawtext-');
+        $path = tempnam(self::directory(), 'mot-drawtext-');
 
         if ($path === false || file_put_contents($path, $text) === false) {
             throw new \RuntimeException('Could not write drawtext text.');

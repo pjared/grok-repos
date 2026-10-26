@@ -55,6 +55,45 @@ it('exports plaque text with an apostrophe, a colon, and a percent sign', functi
         ->and(Drawtext::files())->toBe([]);
 });
 
+it('draws from a textfile path that contains an apostrophe', function () {
+    $filter = Drawtext::filter("Iole's ring");
+    $stored = Drawtext::files()[0] ?? '';
+    expect(str_starts_with($stored, storage_path('app/drawtext')))->toBeTrue()
+        ->and($filter)->toContain('textfile=');
+    Drawtext::cleanup();
+
+    $directory = storage_path("framework/testing/o'hara-".uniqid());
+    Drawtext::useDirectory($directory);
+    $output = storage_path('framework/testing/drawtext-'.uniqid().'.mp4');
+
+    try {
+        $filter = Drawtext::filter("Iole's ring");
+        $file = Drawtext::files()[0] ?? '';
+
+        expect($file)->toContain("'")
+            ->and(str_starts_with($file, $directory))->toBeTrue();
+
+        app(Ffmpeg::class)->run([
+            '-f', 'lavfi',
+            '-i', 'color=c=0x22232b:s=320x180:d=0.3',
+            '-vf', $filter,
+            '-t', '0.2',
+            '-r', '12',
+            $output,
+        ]);
+
+        expect(is_file($output))->toBeTrue()
+            ->and(filesize($output))->toBeGreaterThan(0);
+    } finally {
+        Drawtext::cleanup();
+        Drawtext::useDirectory(null);
+
+        if (is_file($output)) {
+            unlink($output);
+        }
+    }
+});
+
 it('deletes drawtext files when burn-in fails', function () {
     Storage::fake('public');
     ['sequence' => $sequence] = museum();
