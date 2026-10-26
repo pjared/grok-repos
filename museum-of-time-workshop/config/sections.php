@@ -39,7 +39,7 @@ return [
         'module' => 'Assets',
         'route' => 'assets.index',
         'icon' => 'assets',
-        'placeholder' => true,
+        'placeholder' => false,
         'component' => AssetsIndex::class,
     ],
 ];

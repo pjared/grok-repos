@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class TextCue extends Model
 {
-    protected $fillable = ['shot_id', 'type', 'offset_s', 'text', 'voice'];
+    protected $fillable = ['shot_id', 'type', 'offset_s', 'text', 'voice', 'audio_path'];
 
     protected function casts(): array
     {

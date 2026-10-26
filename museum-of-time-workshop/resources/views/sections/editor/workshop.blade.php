@@ -271,6 +271,7 @@
                     <form wire:submit="importPack" class="flex items-center gap-2">
                         <input wire:model="packUpload" type="file" accept=".zip,application/zip" class="max-w-[180px] text-[11px] text-[#8a8a96] file:mr-2 file:rounded-md file:border-0 file:bg-[#22232b] file:px-2 file:py-1 file:text-[11px] file:text-[#d7ccff]">
                         <button type="submit" class="h-7 shrink-0 rounded-lg bg-[#22232b] px-2 text-xs text-[#d7ccff]">Import scenes</button>
+                        <button type="button" wire:click="importCurrentExhibit" class="h-7 shrink-0 rounded-lg bg-[#22232b] px-2 text-xs text-[#d7ccff]">Import exhibit</button>
                     </form>
                 </div>
                 <div class="pointer-events-none absolute bottom-3 top-16 w-px bg-[#ff5c8a]" style="left: calc(1rem + 4.5rem)" :style="`left: calc(1rem + 4.5rem + (100% - 2rem - 4.5rem) * ${duration ? time / duration : 0})`"></div>

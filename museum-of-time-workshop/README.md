@@ -2,6 +2,8 @@
 
 Desktop timeline editor for Museum of Time exhibits, and the first section of the admin interface. v0 stitches storyboard frames with ffmpeg. It does not call a paid video API, synthesize voiceover, sync to the cloud, or share a session between people.
 
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the section registry, models, and agent entry points.
+
 ## Requirements
 
 - PHP 8.3 with `mbstring`, `xml`, `curl`, `sqlite`, `pdo_sqlite`, `zip`, `gd`, `bcmath`, and `intl`
@@ -92,6 +94,18 @@ php artisan workshop:import-scenes path/to/pack.json
 
 The editor's Import scenes button takes a `.zip` and puts it in the inbox as pending. A JSON file or a `.zip` dropped in the inbox (`WORKSHOP_INBOX`, default `storage/app/inbox`) uses that same gate. Approve adds the scenes. Reject leaves the sequence unchanged. Invalid JSON, a missing frame, or a frame path that leaves the pack is reported and is not imported.
 
+## Media library
+
+Rendered video and audio stay outside git. Point `MEDIA_ROOT` at a folder laid out like `museum-of-time/`: `exhibits/<slug>/`, `assets/video`, `assets/audio`, and `previews`. The app links that folder at `storage/app/public/media` the first time the library is used, and does not copy it into the repo. A failed link is shown on the Assets page and does not stop the app from booting.
+
+The Assets section lists mp4, mov, mp3, jpg, and png files grouped by exhibit, with a preview and an ffprobe duration cached by file mtime.
+
+```bash
+php artisan workshop:import-exhibit iole-uncopied-canvas
+```
+
+The command reads `museum-of-time/exhibits/<slug>/` notes and prompts, matches clips and narration audio under that exhibit's own `exhibits/<slug>/`, `assets/<kind>/<slug>/`, and `previews/<slug>/` folders, and drops a scene pack in the inbox. A shot with no matching clip stays draft. Approve is the same gate as any other pack. The pack places the first new scene with `after_id` when the exhibit already has a shot, and each following scene with `after_order`. Shots keep the existing clip as `clip_path`, narration audio on the cue, and the exhibit's truth tag. The Assets page and the editor both have an Import exhibit action.
+
 ## Sections
 
 `config/sections.php` is the registry. Each section is a module under `app/Sections/<Name>` with its own `routes.php`, Livewire components, and a left-rail entry. Shared records are `Wing`, `Hall`, `Exhibit`, `Character`, and `Asset` (with a `TruthTag`). A `Sequence` belongs to an `Exhibit`.
@@ -101,7 +115,7 @@ The editor's Import scenes button takes a `.zip` and puts it in the inbox as pen
 | Editor | `/` | Timeline, inspector, characters, export |
 | Exhibits | `/exhibits` | Placeholder |
 | Wings & Halls | `/wings` | Placeholder |
-| Assets | `/assets` | Placeholder |
+| Assets | `/assets` | Media library |
 
 ## Tests
 

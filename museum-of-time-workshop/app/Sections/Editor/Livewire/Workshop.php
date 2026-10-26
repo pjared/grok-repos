@@ -21,6 +21,7 @@ use App\Video\HouseStandard;
 use App\Video\ShortsSplitter;
 use App\Video\Stamp;
 use App\Workshop\AddScene;
+use App\Workshop\ExhibitImporter;
 use App\Workshop\SceneInbox;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Layout;
@@ -169,6 +170,26 @@ class Workshop extends Component
         ]);
         $this->frameUpload = null;
         $this->notice = null;
+    }
+
+    public function importCurrentExhibit(ExhibitImporter $importer): void
+    {
+        $sequence = $this->sequence();
+
+        if (! $sequence) {
+            $this->notice = 'Open an exhibit before importing one.';
+
+            return;
+        }
+
+        try {
+            $submission = $importer->submit($sequence->exhibit->slug);
+            $this->notice = $submission->filename.' is waiting for approval.';
+        } catch (\Throwable $exception) {
+            $this->notice = $exception->getMessage() !== ''
+                ? $exception->getMessage()
+                : 'Exhibit pack could not be imported.';
+        }
     }
 
     public function importPack(SceneInbox $inbox): void

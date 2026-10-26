@@ -10,7 +10,8 @@ it('registers the admin sections and their routes', function () {
     expect($registry->keys())->toBe(['editor', 'exhibits', 'wings', 'assets'])
         ->and($registry->get('editor')['placeholder'])->toBeFalse()
         ->and($registry->get('wings')['label'])->toBe('Wings & Halls')
-        ->and($registry->placeholders())->toHaveCount(3);
+        ->and($registry->get('assets')['placeholder'])->toBeFalse()
+        ->and($registry->placeholders())->toHaveCount(2);
 
     foreach ($registry->all() as $section) {
         expect(is_file($registry->routesPath($section)))->toBeTrue()
@@ -63,5 +64,5 @@ it('resolves each section component after a livewire round trip', function () {
 it('shows placeholder copy for the sections that are not the editor', function () {
     $this->get(route('exhibits.index'))->assertOk()->assertSee('Placeholder');
     $this->get(route('wings.index'))->assertOk()->assertSee('Wings & Halls');
-    $this->get(route('assets.index'))->assertOk()->assertSee('Placeholder');
+    $this->get(route('assets.index'))->assertOk()->assertSee('grouped by exhibit')->assertDontSee('This section is on the admin rail');
 });
