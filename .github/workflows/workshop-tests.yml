@@ -1,0 +1,32 @@
+name: Workshop tests
+
+on:
+  push:
+    paths:
+      - "museum-of-time-workshop/**"
+      - ".github/workflows/workshop-tests.yml"
+  pull_request:
+    paths:
+      - "museum-of-time-workshop/**"
+      - ".github/workflows/workshop-tests.yml"
+
+jobs:
+  pest:
+    name: pest
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: museum-of-time-workshop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: mbstring, xml, curl, sqlite, pdo_sqlite, zip, gd, bcmath, intl
+          coverage: none
+      - name: Install ffmpeg and fonts
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist
+      - name: Test
+        run: vendor/bin/pest
