@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 560" width="900" height="560" role="img" aria-label="Already Seen wall diagram">
+  <defs>
+    <marker id="arrowHead" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#2a2a2a"/>
+    </marker>
+    <style>
+      .axis { stroke: #2a2a2a; stroke-width: 2; fill: none; }
+      .label { font-family: Georgia, "Times New Roman", serif; fill: #2a2a2a; }
+      .caption { font-family: Georgia, "Times New Roman", serif; fill: #2a2a2a; }
+      .small { font-size: 14px; }
+      .title { font-size: 22px; font-weight: 600; }
+      .muted { fill: #666; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="560" fill="#f4f1ea"/>
+
+  <!-- Title -->
+  <text x="450" y="42" text-anchor="middle" class="label title">Already Seen — wall diagram</text>
+  <text x="450" y="66" text-anchor="middle" class="label small muted">Parable · Travelers wing · not a physics chart</text>
+
+  <!-- Axes -->
+  <line x1="100" y1="420" x2="820" y2="420" class="axis" marker-end="url(#arrowHead)"/>
+  <line x1="100" y1="420" x2="100" y2="110" class="axis" marker-end="url(#arrowHead)"/>
+
+  <!-- Axis labels -->
+  <text x="100" y="100" text-anchor="middle" class="label small">wonder</text>
+  <text x="100" y="118" text-anchor="middle" class="label small muted">high</text>
+  <text x="115" y="410" class="label small muted">low</text>
+  <text x="220" y="450" text-anchor="middle" class="label small">the day we unveil</text>
+  <text x="700" y="450" text-anchor="middle" class="label small">already old</text>
+
+  <!-- Vertical guide for left / right -->
+  <line x1="450" y1="120" x2="450" y2="420" stroke="#cfc8bb" stroke-width="1" stroke-dasharray="4 6"/>
+
+  <!-- RIGHT DOTS: finished machines — low band (already ordinary) -->
+  <circle cx="680" cy="340" r="9" fill="#2a2a2a"/>
+  <circle cx="720" cy="365" r="9" fill="#2a2a2a"/>
+  <circle cx="700" cy="390" r="9" fill="#2a2a2a"/>
+  <text x="745" y="355" class="label small muted">finished</text>
+  <text x="745" y="372" class="label small muted">machines</text>
+
+  <!-- LEFT: unveiling pairs (faint high + solid low) -->
+  <!-- Unveiling A -->
+  <circle cx="220" cy="150" r="9" fill="none" stroke="#2a2a2a" stroke-width="2" opacity="0.45"/>
+  <circle cx="220" cy="340" r="10" fill="#2a2a2a"/>
+  <line x1="220" y1="160" x2="220" y2="330" stroke="#2a2a2a" stroke-width="1.5" stroke-dasharray="5 4" opacity="0.7"/>
+
+  <!-- Unveiling B -->
+  <circle cx="300" cy="165" r="9" fill="none" stroke="#2a2a2a" stroke-width="2" opacity="0.45"/>
+  <circle cx="300" cy="355" r="10" fill="#2a2a2a"/>
+  <line x1="300" y1="175" x2="300" y2="345" stroke="#2a2a2a" stroke-width="1.5" stroke-dasharray="5 4" opacity="0.7"/>
+
+  <!-- Unveiling C: open circle low-left = empty frame slot -->
+  <circle cx="380" cy="155" r="9" fill="none" stroke="#2a2a2a" stroke-width="2" opacity="0.45"/>
+  <circle cx="380" cy="360" r="11" fill="none" stroke="#2a2a2a" stroke-width="2.5"/>
+  <line x1="380" y1="165" x2="380" y2="349" stroke="#2a2a2a" stroke-width="1.5" stroke-dasharray="5 4" opacity="0.7"/>
+  <text x="380" y="390" text-anchor="middle" class="label small">empty slot</text>
+
+  <!-- Legend notes for faint/solid -->
+  <text x="200" y="130" class="label small muted">wonder that should’ve been</text>
+  <text x="200" y="408" class="label small muted">where it landed</text>
+
+  <!-- Arrow: him walking right first — toward low/already-old cluster -->
+  <path d="M250 280 C 400 300, 550 330, 670 350" fill="none" stroke="#2a2a2a" stroke-width="2.5" marker-end="url(#arrowHead)"/>
+  <text x="480" y="255" class="label small">he walks right first</text>
+
+  <!-- Arrow: return left, landing on empty-slot solid -->
+  <path d="M690 375 C 560 370, 470 365, 392 360" fill="none" stroke="#2a2a2a" stroke-width="2.5" marker-end="url(#arrowHead)"/>
+  <text x="540" y="400" class="label small">return</text>
+
+  <!-- Caption box -->
+  <rect x="140" y="480" width="620" height="58" rx="6" fill="#ebe6dc" stroke="#cfc8bb"/>
+  <text x="450" y="505" text-anchor="middle" class="caption small">Left: the day we unveil. Right: the day it’s already old.</text>
+  <text x="450" y="525" text-anchor="middle" class="caption small">He walks right first.</text>
+</svg>
